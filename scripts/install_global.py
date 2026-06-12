@@ -17,7 +17,7 @@ OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", action="append", required=True, type=Path)
-    parser.add_argument("--agent", action="append", choices=("codex", "claude"), required=True)
+    parser.add_argument("--agent", action="append", choices=("codex", "claude", "cowork"), required=True)
     parser.add_argument("--default-task", default="general project session")
     args = parser.parse_args()
 
@@ -41,8 +41,10 @@ def main() -> int:
     for agent in args.agent:
         if agent == "codex":
             install_codex_global()
-        else:
+        elif agent == "claude":
             install_claude_global()
+        else:
+            install_cowork_global()
 
     print(f"Installed Obsidianify globally for: {', '.join(args.agent)}")
     print(f"Config: {OBSIDIANIFY_HOME / 'config.json'}")
@@ -106,6 +108,33 @@ Answer from that packet only. Do not inspect other files unless the user asks yo
 
 If the packet is missing, say: "No Obsidianify session packet is available in this project yet."
 """.strip(),
+    )
+
+
+def install_cowork_global() -> None:
+    note_path = OBSIDIANIFY_HOME / "COWORK.md"
+    note_path.write_text(
+        """
+# Obsidianify Cowork Workaround
+
+Cowork does not appear to run Claude Code's global `~/.claude/settings.json` hooks.
+
+To use Obsidianify with Cowork, run this from inside the project before asking Cowork about Obsidian memory:
+
+```bash
+python3 /path/to/Obsidianify/scripts/omi.py refresh-global \\
+  --config "$HOME/.obsidianify/config.json" \\
+  --agent cowork
+```
+
+Then ask Cowork:
+
+```text
+Read .obsidian-memory/COWORK_SESSION_CONTEXT.md and tell me exactly what Obsidian graph memory was injected. Answer only from that packet.
+```
+""".strip()
+        + "\n",
+        encoding="utf-8",
     )
 
 

@@ -1,6 +1,6 @@
 # Architecture
 
-Obsidianify is Graphify-style graph intelligence for Obsidian. It has one shared core and two global agent adapters.
+Obsidianify is Graphify-style graph intelligence for Obsidian. It has one shared core, two global hook adapters, and a Cowork manual adapter.
 
 The public product is not a per-project note filter. It ranks all enabled Obsidian vaults as one knowledge graph, then injects project-proximate memory into the active agent session.
 
@@ -10,7 +10,7 @@ Obsidian vault(s)
   -> whole-graph ranking
   -> project proximity selection
   -> generated context packet
-  -> global Codex / Claude startup hook
+  -> global Codex / Claude startup hook, or manual Cowork packet
 ```
 
 ## Shared Core
@@ -53,6 +53,13 @@ The system should decide the injected slice. Humans should not have to maintain 
 - `~/.claude/CLAUDE.md` tells Claude to read `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`.
 - Obsidianify detects the active project from the session working directory.
 - The hook emits `hookSpecificOutput.additionalContext` with the loaded packet.
+
+## Cowork Adapter
+
+- Cowork does not appear to run Claude Code's global hook system.
+- Use `omi.py refresh-global --agent cowork` manually from inside a project.
+- The command writes `.obsidian-memory/COWORK_SESSION_CONTEXT.md`.
+- Ask Cowork to read that packet explicitly.
 
 ## Reliability Stack
 

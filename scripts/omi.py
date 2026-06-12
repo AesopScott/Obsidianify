@@ -43,7 +43,7 @@ def main() -> int:
     packet.add_argument("--project", required=True)
     packet.add_argument("--task", default="")
     packet.add_argument("--target", required=True, type=Path)
-    packet.add_argument("--agent", choices=("codex", "claude"), required=True)
+    packet.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     packet.add_argument("--limit", default=20, type=int)
 
     refresh = sub.add_parser("refresh", help="Sync, rank, and write a session packet.")
@@ -52,12 +52,12 @@ def main() -> int:
     refresh.add_argument("--project", required=True)
     refresh.add_argument("--task", default="")
     refresh.add_argument("--target", required=True, type=Path)
-    refresh.add_argument("--agent", choices=("codex", "claude"), required=True)
+    refresh.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     refresh.add_argument("--limit", default=20, type=int)
 
     refresh_global = sub.add_parser("refresh-global", help="Refresh memory for the current working directory using global config.")
     refresh_global.add_argument("--config", default=Path.home() / ".obsidianify" / "config.json", type=Path)
-    refresh_global.add_argument("--agent", choices=("codex", "claude"), required=True)
+    refresh_global.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     refresh_global.add_argument("--limit", default=20, type=int)
     refresh_global.add_argument(
         "--emit-hook-context",
@@ -294,7 +294,7 @@ def generate_packet(store: Path, project: str, task: str, target: Path, agent: s
     top = rankings.get("ranked", [])[:limit]
     out_dir = target / ".obsidian-memory"
     out_dir.mkdir(parents=True, exist_ok=True)
-    packet_name = "CODEX_SESSION_CONTEXT.md" if agent == "codex" else "CLAUDE_SESSION_CONTEXT.md"
+    packet_name = packet_filename(agent)
     packet_path = out_dir / packet_name
     status_path = out_dir / "STATUS.json"
     lines = [
@@ -371,6 +371,16 @@ def hook_context_payload(packet_path: Path, project: str, agent: str) -> dict[st
             "additionalContext": context,
         }
     }
+
+
+def packet_filename(agent: str) -> str:
+    if agent == "codex":
+        return "CODEX_SESSION_CONTEXT.md"
+    if agent == "claude":
+        return "CLAUDE_SESSION_CONTEXT.md"
+    if agent == "cowork":
+        return "COWORK_SESSION_CONTEXT.md"
+    raise ValueError(f"Unsupported agent: {agent}")
 
 
 def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:

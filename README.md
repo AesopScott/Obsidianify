@@ -6,6 +6,8 @@ It turns an entire Obsidian vault into ranked session memory for coding agents.
 
 It is a public, local-first tool for people who use Obsidian as their knowledge system and want coding agents like **Codex** and **Claude Code** to receive the right memory at session start.
 
+Cowork is supported through a manual packet refresh workaround because it does not appear to run Claude Code's global hook system.
+
 The core idea:
 
 ```text
@@ -25,7 +27,7 @@ Graphify for Obsidian:
 5. Ranks the whole graph for strength, centrality, freshness, bridges, evidence quality, and usefulness.
 6. Selects project-relevant memory by proximity to the project/task.
 7. Generates a context packet.
-8. Injects that packet through Codex or Claude startup hooks.
+8. Injects that packet through Codex or Claude startup hooks, or creates a manual Cowork packet.
 
 The project receiving memory does not need to own the memory system. The memory system can live anywhere, while the generated packet is written into any target project.
 
@@ -75,6 +77,14 @@ Install for Claude only:
 python scripts\install_global.py `
   --vault "C:\path\to\ObsidianVault" `
   --agent claude
+```
+
+Install Cowork workaround files:
+
+```powershell
+python scripts\install_global.py `
+  --vault "C:\path\to\ObsidianVault" `
+  --agent cowork
 ```
 
 Then start a new Codex or Claude session in any project and ask:
@@ -201,11 +211,32 @@ For Claude, the global installer creates or updates:
 ~/.obsidianify/config.json
 ```
 
+For Cowork, the global installer creates:
+
+```text
+~/.obsidianify/COWORK.md
+```
+
+Cowork does not auto-run Obsidianify hooks. Use manual refresh from inside the project:
+
+```bash
+python3 /path/to/Obsidianify/scripts/omi.py refresh-global \
+  --config "$HOME/.obsidianify/config.json" \
+  --agent cowork
+```
+
+Then ask Cowork:
+
+```text
+Read .obsidian-memory/COWORK_SESSION_CONTEXT.md and tell me exactly what Obsidian graph memory was injected. Answer only from that packet.
+```
+
 When a session starts in a project, Obsidianify writes:
 
 ```text
 <current-project>/.obsidian-memory/CODEX_SESSION_CONTEXT.md
 <current-project>/.obsidian-memory/CLAUDE_SESSION_CONTEXT.md
+<current-project>/.obsidian-memory/COWORK_SESSION_CONTEXT.md
 <current-project>/.obsidian-memory/STATUS.json
 ```
 

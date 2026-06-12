@@ -44,6 +44,7 @@ Graphify for Obsidian.
 - Project/task proximity scoring.
 - Global Codex install adapter.
 - Global Claude install adapter.
+- Cowork manual packet adapter.
 - Generated Markdown packet.
 - Status file for verification.
 
