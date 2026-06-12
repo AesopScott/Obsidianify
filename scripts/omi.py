@@ -171,6 +171,7 @@ def sync_vault(vault: Path, store: Path) -> None:
     store.mkdir(parents=True, exist_ok=True)
     write_json(store / "memory_nodes.json", notes)
     write_json(store / "memory_edges.json", edges)
+    write_rag_documents(store / "memory_rag_documents.jsonl", notes)
     write_json(
         store / "sync_status.json",
         {
@@ -178,10 +179,11 @@ def sync_vault(vault: Path, store: Path) -> None:
             "vault": str(vault),
             "notes": len(notes),
             "edges": len(edges),
+            "ragDocuments": len(notes),
             "syncedAt": utc_now(),
         },
     )
-    print(f"Synced {len(notes)} notes and {len(edges)} edges -> {store}")
+    print(f"Synced {len(notes)} notes, {len(edges)} edges, and {len(notes)} RAG docs -> {store}")
 
 
 def rank_graph(store: Path, project: str, task: str) -> None:
@@ -433,6 +435,40 @@ def load_json(path: Path) -> Any:
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
+
+
+def write_rag_documents(path: Path, notes: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for note in notes:
+        text = "\n".join(
+            part
+            for part in [
+                f"Title: {note.get('title', '')}",
+                f"Path: {note.get('path', '')}",
+                f"Tags: {', '.join(note.get('tags', []))}" if note.get("tags") else "",
+                f"Links: {', '.join(note.get('links', []))}" if note.get("links") else "",
+                "",
+                note.get("excerpt", ""),
+            ]
+            if part
+        )
+        doc = {
+            "id": note.get("id"),
+            "text": text,
+            "metadata": {
+                "source": "obsidian",
+                "path": note.get("path", ""),
+                "title": note.get("title", ""),
+                "folder": note.get("folder", ""),
+                "tags": note.get("tags", []),
+                "aliases": note.get("aliases", []),
+                "links": note.get("links", []),
+                "modifiedAt": note.get("modifiedAt", ""),
+            },
+        }
+        lines.append(json.dumps(doc, ensure_ascii=True))
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
 def utc_now() -> str:

@@ -38,6 +38,7 @@ Graphify for Obsidian.
 
 - Local Markdown parser for Obsidian notes.
 - Local JSON graph store.
+- RAG-ready JSONL export.
 - Whole-graph ranking.
 - Project/task proximity scoring.
 - Global Codex install adapter.

@@ -16,6 +16,7 @@ Obsidian vault
 ## Shared Core
 
 - `scripts/omi.py sync`: parse the Obsidian vault into local graph JSON.
+- `scripts/omi.py sync`: also writes `memory_rag_documents.jsonl`, a portable RAG-ready corpus.
 - `scripts/omi.py rank`: rank the whole graph and score project/task proximity.
 - `scripts/omi.py packet`: generate a session context packet.
 - `scripts/omi.py refresh`: run all three for a connected project.
@@ -63,6 +64,15 @@ The system should decide the injected slice. Humans should not have to maintain 
 ## Storage
 
 The MVP uses local JSON in `.omi-store/`.
+
+The local store includes:
+
+- `memory_nodes.json`
+- `memory_edges.json`
+- `memory_rankings.json`
+- `memory_rag_documents.jsonl`
+
+`memory_rag_documents.jsonl` can be imported into a vector database, Firebase-backed RAG pipeline, SQLite FTS table, or other retrieval backend.
 
 Future stores can implement the same shape:
 
