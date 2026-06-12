@@ -29,7 +29,14 @@ Graphify for Obsidian:
 
 The project receiving memory does not need to own the memory system. The memory system can live anywhere, while the generated packet is written into any target project.
 
-## Quick Start
+## Prerequisites
+
+- Python 3.10 or newer
+- Git
+- At least one local Obsidian vault
+- Codex, Claude Code, or both
+
+## Global Install
 
 Public repo target:
 
@@ -37,18 +44,36 @@ Public repo target:
 https://github.com/AesopScott/Obsidianify
 ```
 
-Local install from GitHub:
+Clone the repo:
 
 ```powershell
 git clone https://github.com/AesopScott/Obsidianify.git
 cd Obsidianify
 ```
 
+Install globally for both Codex and Claude:
+
 ```powershell
 python scripts\install_global.py `
   --vault "G:\My Drive\Obsidian\Meridian_Build" `
   --vault "G:\My Drive\Obsidian\StarHistory" `
   --agent codex `
+  --agent claude
+```
+
+Install for Codex only:
+
+```powershell
+python scripts\install_global.py `
+  --vault "C:\path\to\ObsidianVault" `
+  --agent codex
+```
+
+Install for Claude only:
+
+```powershell
+python scripts\install_global.py `
+  --vault "C:\path\to\ObsidianVault" `
   --agent claude
 ```
 
@@ -64,6 +89,34 @@ If the agent does not volunteer the packet, use the explicit fallback prompt:
 
 ```text
 Read .obsidian-memory/CODEX_SESSION_CONTEXT.md and tell me exactly what Obsidian graph memory was injected. Answer only from that packet.
+```
+
+## Verify The Install
+
+Global config:
+
+```powershell
+Get-Content "$env:USERPROFILE\.obsidianify\config.json"
+```
+
+Codex hook:
+
+```powershell
+Get-Content "$env:USERPROFILE\.codex\hooks.json"
+```
+
+Claude hook:
+
+```powershell
+Get-Content "$env:USERPROFILE\.claude\settings.json"
+```
+
+Manual refresh from inside any project:
+
+```powershell
+python "C:\path\to\Obsidianify\scripts\omi.py" refresh-global `
+  --config "$env:USERPROFILE\.obsidianify\config.json" `
+  --agent codex
 ```
 
 ## Adapter Docs
