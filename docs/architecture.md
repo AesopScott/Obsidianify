@@ -2,10 +2,10 @@
 
 Obsidianify is Graphify-style graph intelligence for Obsidian. It has one shared core and two global agent adapters.
 
-The public product is not a per-project note filter. It ranks the whole Obsidian vault, then injects project-proximate memory into the active agent session.
+The public product is not a per-project note filter. It ranks all enabled Obsidian vaults as one knowledge graph, then injects project-proximate memory into the active agent session.
 
 ```text
-Obsidian vault
+Obsidian vault(s)
   -> whole-graph mirror
   -> whole-graph ranking
   -> project proximity selection
@@ -72,7 +72,7 @@ The local store includes:
 - `memory_rankings.json`
 - `memory_rag_documents.jsonl`
 
-`memory_rag_documents.jsonl` can be imported into a vector database, Firebase-backed RAG pipeline, SQLite FTS table, or other retrieval backend.
+`memory_rag_documents.jsonl` includes vault metadata and can be imported into a vector database, Firebase-backed RAG pipeline, SQLite FTS table, or other retrieval backend.
 
 Future stores can implement the same shape:
 

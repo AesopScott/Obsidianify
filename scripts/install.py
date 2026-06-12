@@ -15,7 +15,7 @@ OMI = ROOT / "scripts" / "omi.py"
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", required=True, type=Path)
-    parser.add_argument("--vault", required=True, type=Path)
+    parser.add_argument("--vault", action="append", required=True, type=Path)
     parser.add_argument("--project", required=True)
     parser.add_argument("--agent", action="append", choices=("codex", "claude"), required=True)
     parser.add_argument("--task", default="general project session")
@@ -24,22 +24,23 @@ def main() -> int:
     target = args.target.resolve()
     if not target.exists():
         raise SystemExit(f"Target project not found: {target}")
+    vaults = [vault.resolve() for vault in args.vault]
     for agent in args.agent:
-        install_agent(target, args.vault.resolve(), args.project, args.task, agent)
+        install_agent(target, vaults, args.project, args.task, agent)
     return 0
 
 
-def install_agent(target: Path, vault: Path, project: str, task: str, agent: str) -> None:
+def install_agent(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> None:
     target_memory = target / ".obsidian-memory"
     target_memory.mkdir(parents=True, exist_ok=True)
     if agent == "codex":
-        install_codex(target, vault, project, task)
+        install_codex(target, vaults, project, task)
     else:
-        install_claude(target, vault, project, task)
-    run_refresh(target, vault, project, task, agent)
+        install_claude(target, vaults, project, task)
+    run_refresh(target, vaults, project, task, agent)
 
 
-def install_codex(target: Path, vault: Path, project: str, task: str) -> None:
+def install_codex(target: Path, vaults: list[Path], project: str, task: str) -> None:
     codex_dir = target / ".codex"
     codex_dir.mkdir(exist_ok=True)
     hook = {
@@ -50,7 +51,7 @@ def install_codex(target: Path, vault: Path, project: str, task: str) -> None:
                     "hooks": [
                         {
                             "type": "command",
-                            "command": command(target, vault, project, task, "codex"),
+                            "command": command(target, vaults, project, task, "codex"),
                             "statusMessage": "Refreshing Obsidian memory packet",
                         }
                     ],
@@ -80,7 +81,7 @@ If the packet is missing, say: "No Obsidianify session packet is available in th
     )
 
 
-def install_claude(target: Path, vault: Path, project: str, task: str) -> None:
+def install_claude(target: Path, vaults: list[Path], project: str, task: str) -> None:
     claude_dir = target / ".claude"
     claude_dir.mkdir(exist_ok=True)
     settings_path = claude_dir / "settings.json"
@@ -97,7 +98,7 @@ def install_claude(target: Path, vault: Path, project: str, task: str) -> None:
             "hooks": [
                 {
                     "type": "command",
-                    "command": command(target, vault, project, task, "claude"),
+                    "command": command(target, vaults, project, task, "claude"),
                 }
             ],
         }
@@ -124,7 +125,7 @@ If the packet is missing, say: "No Obsidianify session packet is available in th
     )
 
 
-def run_refresh(target: Path, vault: Path, project: str, task: str, agent: str) -> None:
+def run_refresh(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> None:
     import subprocess
 
     subprocess.run(
@@ -132,8 +133,7 @@ def run_refresh(target: Path, vault: Path, project: str, task: str, agent: str) 
             sys.executable,
             str(OMI),
             "refresh",
-            "--vault",
-            str(vault),
+            *vault_args(vaults),
             "--store",
             str(ROOT / ".omi-store"),
             "--project",
@@ -149,10 +149,10 @@ def run_refresh(target: Path, vault: Path, project: str, task: str, agent: str) 
     )
 
 
-def command(target: Path, vault: Path, project: str, task: str, agent: str) -> str:
+def command(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> str:
     return (
         f'"{sys.executable}" "{OMI}" refresh '
-        f'--vault "{vault}" '
+        f'{vault_command_args(vaults)} '
         f'--store "{ROOT / ".omi-store"}" '
         f'--project "{project}" '
         f'--task "{task}" '
@@ -160,6 +160,17 @@ def command(target: Path, vault: Path, project: str, task: str, agent: str) -> s
         f'--agent "{agent}" '
         f'--emit-hook-context'
     )
+
+
+def vault_args(vaults: list[Path]) -> list[str]:
+    args: list[str] = []
+    for vault in vaults:
+        args.extend(["--vault", str(vault)])
+    return args
+
+
+def vault_command_args(vaults: list[Path]) -> str:
+    return " ".join(f'--vault "{vault}"' for vault in vaults)
 
 
 def append_block(path: Path, label: str, content: str) -> None:

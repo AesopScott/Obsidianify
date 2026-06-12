@@ -16,18 +16,22 @@ OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--vault", required=True, type=Path)
+    parser.add_argument("--vault", action="append", required=True, type=Path)
     parser.add_argument("--agent", action="append", choices=("codex", "claude"), required=True)
     parser.add_argument("--default-task", default="general project session")
     args = parser.parse_args()
 
-    vault = args.vault.resolve()
-    if not vault.exists():
-        raise SystemExit(f"Vault not found: {vault}")
+    vaults = [vault.resolve() for vault in args.vault]
+    for vault in vaults:
+        if not vault.exists():
+            raise SystemExit(f"Vault not found: {vault}")
 
     OBSIDIANIFY_HOME.mkdir(parents=True, exist_ok=True)
     config = {
-        "vault": str(vault),
+        "vaults": [
+            {"name": vault.name, "path": str(vault), "enabled": True}
+            for vault in vaults
+        ],
         "store": str(OBSIDIANIFY_HOME / "store"),
         "defaultTask": args.default_task,
         "repo": str(ROOT),

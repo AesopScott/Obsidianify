@@ -18,15 +18,15 @@ Manual prompts and hand-written memory files do not scale. Rule-based injection 
 
 Use Obsidian as the human knowledge graph, then build a local-first graph intelligence and memory injection tool:
 
-1. Mirror the whole vault graph.
-2. Rank the whole graph.
+1. Mirror all enabled vault graphs.
+2. Rank the combined whole graph.
 3. Select project-proximate memory at session start.
 4. Generate a compact context packet.
 5. Inject through Codex and Claude hooks.
 
 ## Core Principle
 
-The whole graph is ranked. The project only determines which ranked portions are injected.
+The whole graph across all enabled vaults is ranked. The project only determines which ranked portions are injected.
 
 Plain-English version:
 
@@ -37,6 +37,7 @@ Graphify for Obsidian.
 ## MVP
 
 - Local Markdown parser for Obsidian notes.
+- Multi-vault config.
 - Local JSON graph store.
 - RAG-ready JSONL export.
 - Whole-graph ranking.

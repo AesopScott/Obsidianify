@@ -30,7 +30,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sync = sub.add_parser("sync", help="Read an Obsidian vault and write graph JSON.")
-    sync.add_argument("--vault", required=True, type=Path)
+    sync.add_argument("--vault", action="append", required=True, type=Path)
     sync.add_argument("--store", default=Path(".omi-store"), type=Path)
 
     rank = sub.add_parser("rank", help="Rank the whole graph for a project/task.")
@@ -47,7 +47,7 @@ def main() -> int:
     packet.add_argument("--limit", default=20, type=int)
 
     refresh = sub.add_parser("refresh", help="Sync, rank, and write a session packet.")
-    refresh.add_argument("--vault", required=True, type=Path)
+    refresh.add_argument("--vault", action="append", required=True, type=Path)
     refresh.add_argument("--store", default=Path(".omi-store"), type=Path)
     refresh.add_argument("--project", required=True)
     refresh.add_argument("--task", default="")
@@ -67,13 +67,13 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.command == "sync":
-        sync_vault(args.vault, args.store)
+        sync_vaults(args.vault, args.store)
     elif args.command == "rank":
         rank_graph(args.store, args.project, args.task)
     elif args.command == "packet":
         generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit)
     elif args.command == "refresh":
-        sync_vault(args.vault, args.store)
+        sync_vaults(args.vault, args.store)
         rank_graph(args.store, args.project, args.task)
         generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit)
     elif args.command == "refresh-global":
@@ -86,16 +86,16 @@ def refresh_from_global_config(config_path: Path, agent: str, limit: int, emit_h
     target = Path.cwd().resolve()
     project = detect_project_name(target, config)
     task = config.get("defaultTask", "general project session")
-    vault = Path(config["vault"])
+    vaults = config_vaults(config)
     store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
     if emit_hook_context:
         with contextlib.redirect_stdout(io.StringIO()):
-            sync_vault(vault, store)
+            sync_vaults(vaults, store)
             rank_graph(store, project, task)
             packet_path = generate_packet(store, project, task, target, agent, limit)
         print(json.dumps(hook_context_payload(packet_path, project, agent), ensure_ascii=True))
     else:
-        sync_vault(vault, store)
+        sync_vaults(vaults, store)
         rank_graph(store, project, task)
         generate_packet(store, project, task, target, agent, limit)
 
@@ -110,10 +110,53 @@ def detect_project_name(target: Path, config: dict[str, Any]) -> str:
     return target.name
 
 
-def sync_vault(vault: Path, store: Path) -> None:
+def config_vaults(config: dict[str, Any]) -> list[Path]:
+    if "vaults" in config:
+        vaults = []
+        for item in config.get("vaults", []):
+            if isinstance(item, str):
+                vaults.append(Path(item))
+            elif item.get("enabled", True):
+                vaults.append(Path(item["path"]))
+        return vaults
+    if "vault" in config:
+        return [Path(config["vault"])]
+    raise SystemExit("No vaults configured.")
+
+
+def sync_vaults(vaults: list[Path], store: Path) -> None:
+    all_notes: list[dict[str, Any]] = []
+    all_edges: list[dict[str, Any]] = []
+    statuses = []
+    for vault in vaults:
+        notes, edges, status = read_vault(vault)
+        all_notes.extend(notes)
+        all_edges.extend(edges)
+        statuses.append(status)
+
+    store.mkdir(parents=True, exist_ok=True)
+    write_json(store / "memory_nodes.json", all_notes)
+    write_json(store / "memory_edges.json", all_edges)
+    write_rag_documents(store / "memory_rag_documents.jsonl", all_notes)
+    write_json(
+        store / "sync_status.json",
+        {
+            "status": "synced",
+            "vaults": statuses,
+            "notes": len(all_notes),
+            "edges": len(all_edges),
+            "ragDocuments": len(all_notes),
+            "syncedAt": utc_now(),
+        },
+    )
+    print(f"Synced {len(all_notes)} notes, {len(all_edges)} edges, and {len(all_notes)} RAG docs from {len(vaults)} vault(s) -> {store}")
+
+
+def read_vault(vault: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     vault = vault.resolve()
     if not vault.exists():
         raise SystemExit(f"Vault not found: {vault}")
+    vault_name = vault.name
     notes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     by_stem: dict[str, str] = {}
@@ -143,7 +186,9 @@ def sync_vault(vault: Path, store: Path) -> None:
         folder = Path(rel).parent.as_posix()
         notes.append(
             {
-                "id": note_id(rel),
+                "id": note_id(vault_name, rel),
+                "vault": vault_name,
+                "vaultPath": str(vault),
                 "path": rel,
                 "title": str(title),
                 "aliases": aliases,
@@ -160,30 +205,17 @@ def sync_vault(vault: Path, store: Path) -> None:
             target = by_stem.get(target_key)
             edges.append(
                 {
-                    "source": note_id(rel),
-                    "target": note_id(target) if target else f"unresolved:{slug(link)}",
+                    "source": note_id(vault_name, rel),
+                    "target": note_id(vault_name, target) if target else f"unresolved:{slug(vault_name)}:{slug(link)}",
+                    "vault": vault_name,
+                    "vaultPath": str(vault),
                     "targetLabel": link,
                     "relation": "wikilink",
                     "resolved": bool(target),
                 }
             )
 
-    store.mkdir(parents=True, exist_ok=True)
-    write_json(store / "memory_nodes.json", notes)
-    write_json(store / "memory_edges.json", edges)
-    write_rag_documents(store / "memory_rag_documents.jsonl", notes)
-    write_json(
-        store / "sync_status.json",
-        {
-            "status": "synced",
-            "vault": str(vault),
-            "notes": len(notes),
-            "edges": len(edges),
-            "ragDocuments": len(notes),
-            "syncedAt": utc_now(),
-        },
-    )
-    print(f"Synced {len(notes)} notes, {len(edges)} edges, and {len(notes)} RAG docs -> {store}")
+    return notes, edges, {"name": vault_name, "path": str(vault), "notes": len(notes), "edges": len(edges)}
 
 
 def rank_graph(store: Path, project: str, task: str) -> None:
@@ -418,8 +450,8 @@ def evidence_score(note: dict[str, Any]) -> float:
     return 0.4
 
 
-def note_id(path: str) -> str:
-    return "note:" + slug(path)
+def note_id(vault: str, path: str) -> str:
+    return "note:" + slug(vault) + ":" + slug(path)
 
 
 def slug(value: str) -> str:
@@ -458,6 +490,8 @@ def write_rag_documents(path: Path, notes: list[dict[str, Any]]) -> None:
             "text": text,
             "metadata": {
                 "source": "obsidian",
+                "vault": note.get("vault", ""),
+                "vaultPath": note.get("vaultPath", ""),
                 "path": note.get("path", ""),
                 "title": note.get("title", ""),
                 "folder": note.get("folder", ""),

@@ -47,6 +47,7 @@ cd Obsidianify
 ```powershell
 python scripts\install_global.py `
   --vault "G:\My Drive\Obsidian\Meridian_Build" `
+  --vault "G:\My Drive\Obsidian\StarHistory" `
   --agent codex `
   --agent claude
 ```
@@ -57,7 +58,7 @@ Then start a new Codex or Claude session in any project and ask:
 What Obsidian graph memory was injected into this session?
 ```
 
-Obsidianify detects the current working directory, treats that as the active project, ranks the whole Obsidian graph, and writes the relevant packet into that project.
+Obsidianify detects the current working directory, treats that as the active project, ranks all enabled Obsidian vaults as one knowledge graph, and writes the relevant packet into that project.
 
 If the agent does not volunteer the packet, use the explicit fallback prompt:
 
@@ -80,6 +81,17 @@ For Codex, the global installer creates or updates:
 ~/.codex/hooks.json
 ~/.codex/AGENTS.md
 ~/.obsidianify/config.json
+```
+
+The config supports multiple vaults:
+
+```json
+{
+  "vaults": [
+    {"name": "Meridian_Build", "path": "G:\\My Drive\\Obsidian\\Meridian_Build", "enabled": true},
+    {"name": "StarHistory", "path": "G:\\My Drive\\Obsidian\\StarHistory", "enabled": true}
+  ]
+}
 ```
 
 For Claude, the global installer creates or updates:
@@ -126,7 +138,7 @@ Firebase, Supabase, SQLite, or another database can be added later. The core loo
 read Obsidian -> write RAG corpus -> rank graph -> generate packet -> inject packet
 ```
 
-`memory_rag_documents.jsonl` is the portable RAG export. Each line contains a document with `id`, `text`, and metadata such as source path, title, tags, links, and modified time.
+`memory_rag_documents.jsonl` is the portable RAG export. Each line contains a document with `id`, `text`, and metadata such as vault, source path, title, tags, links, and modified time.
 
 ## Optional Project Connect Mode
 
@@ -136,6 +148,7 @@ The default install is global. Project connect mode is only for teams that want 
 python scripts\install.py `
   --target "C:\path\to\project" `
   --vault "C:\path\to\ObsidianVault" `
+  --vault "C:\path\to\SecondVault" `
   --project "Project Name" `
   --agent codex
 ```
