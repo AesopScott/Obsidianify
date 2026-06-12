@@ -119,6 +119,52 @@ python "C:\path\to\Obsidianify\scripts\omi.py" refresh-global `
   --agent codex
 ```
 
+On macOS/Linux:
+
+```bash
+python3 "$HOME/path/to/Obsidianify/scripts/omi.py" refresh-global \
+  --config "$HOME/.obsidianify/config.json" \
+  --agent codex
+```
+
+## macOS Notes
+
+Global install creates global files in your home directory:
+
+```text
+~/.obsidianify/config.json
+~/.codex/hooks.json
+~/.codex/AGENTS.md
+~/.claude/settings.json
+~/.claude/CLAUDE.md
+```
+
+It does **not** immediately create `.obsidian-memory/` in every repo. That folder is created inside a project when a Codex or Claude session starts there, or when you manually refresh from inside that project.
+
+To create the packet manually on macOS, first `cd` into the project:
+
+```bash
+cd /path/to/project
+
+python3 /path/to/Obsidianify/scripts/omi.py refresh-global \
+  --config "$HOME/.obsidianify/config.json" \
+  --agent claude
+```
+
+After that, the project should contain:
+
+```text
+.obsidian-memory/CLAUDE_SESSION_CONTEXT.md
+.obsidian-memory/STATUS.json
+```
+
+If the folder does not appear after starting a new agent session, the hook probably did not run. Check that the global hook exists and that the agent trusts/runs hooks:
+
+```bash
+cat "$HOME/.claude/settings.json"
+cat "$HOME/.codex/hooks.json"
+```
+
 ## Adapter Docs
 
 - Codex adapter: `adapters/codex/`
