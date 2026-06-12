@@ -1,0 +1,21 @@
+{
+  "name": "obsidianify",
+  "version": "0.1.0",
+  "description": "Graphify-style graph intelligence for Obsidian with Codex memory injection.",
+  "author": {
+    "name": "AesopScott"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Obsidianify",
+    "shortDescription": "Inject ranked Obsidian graph memory by project proximity.",
+    "longDescription": "Obsidianify is Graphify-style graph intelligence for Obsidian. It reads an entire Obsidian vault, mirrors notes and links into a local graph store, ranks the whole graph, selects project-proximate memory, and generates session context packets for Codex and Claude project sessions.",
+    "developerName": "AesopScott",
+    "category": "Productivity",
+    "capabilities": [
+      "hooks",
+      "skills"
+    ],
+    "defaultPrompt": "Set up Obsidianify for this project."
+  }
+}

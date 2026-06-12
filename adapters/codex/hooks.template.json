@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"PYTHON\" \"OMI_SCRIPT\" refresh-global --config \"OBSIDIANIFY_CONFIG\" --agent \"codex\" --emit-hook-context",
+            "statusMessage": "Refreshing Obsidian memory packet"
+          }
+        ]
+      }
+    ]
+  }
+}

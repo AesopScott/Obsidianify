@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"PYTHON\" \"OMI_SCRIPT\" refresh-global --config \"OBSIDIANIFY_CONFIG\" --agent \"claude\" --emit-hook-context"
+          }
+        ]
+      }
+    ]
+  }
+}
