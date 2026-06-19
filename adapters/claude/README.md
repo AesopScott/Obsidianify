@@ -21,6 +21,7 @@ python scripts\install_global.py `
 ## What Happens
 
 1. A Claude `SessionStart` hook refreshes the ranked memory packet.
+2. A `UserPromptSubmit` hook appends prompts into `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
 2. Obsidianify detects the current project from the session working directory.
 3. Global `CLAUDE.md` tells Claude to read `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`.
 4. The hook emits `hookSpecificOutput.additionalContext` with the loaded packet.

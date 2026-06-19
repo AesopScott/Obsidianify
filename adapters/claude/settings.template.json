@@ -10,6 +10,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"PYTHON\" \"OMI_SCRIPT\" record-prompt --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"claude\""
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,23 +1,25 @@
 ---
 name: obsidianify
-description: Use when setting up, refreshing, debugging, or explaining Obsidianify for Codex or Claude sessions. Reads an Obsidian vault, ranks graph memory, and creates session context packets.
+description: Use when setting up, refreshing, debugging, or explaining Obsidianify for Codex or Claude sessions. Reads Obsidian vaults, ranks graph memory by project proximity, creates session context packets, and records prompt history into Obsidian session notes.
 ---
 
 # Obsidianify
 
-Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session.
+Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent prompts back into an Obsidian vault.
 
 ## Workflow
 
-1. Confirm the target project directory and Obsidian vault directory.
-2. Run `python scripts/install.py --target <project> --vault <vault> --project <name> --agent codex --agent claude` from the plugin repo.
-3. Start a new agent session in the target project.
-4. Ask what Obsidian graph memory was injected.
-5. If memory is missing, inspect `<target>/.obsidian-memory/STATUS.json`.
+1. Prefer global install unless the user needs a project-local override.
+2. Run `python scripts/install_global.py --vault <vault> --agent codex --agent claude` from the plugin repo for global install.
+3. For project-local install, run `python scripts/install.py --target <project> --vault <vault> --project <name> --agent codex --agent claude`.
+4. Start a new agent session in the target project.
+5. Ask what Obsidian graph memory was injected.
+6. If memory is missing, inspect `<target>/.obsidian-memory/STATUS.json`.
 
 ## Reliability
 
-- Hooks refresh the packet.
+- `SessionStart` hooks refresh the packet.
+- `UserPromptSubmit` hooks append prompts into `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.
 - The first user prompt can force verification.
 

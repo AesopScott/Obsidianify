@@ -13,9 +13,9 @@ import contextlib
 import io
 import json
 import math
-import os
 import re
-from collections import Counter, defaultdict
+import sys
+from collections import Counter, defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -54,6 +54,11 @@ def main() -> int:
     refresh.add_argument("--target", required=True, type=Path)
     refresh.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     refresh.add_argument("--limit", default=20, type=int)
+    refresh.add_argument(
+        "--emit-hook-context",
+        action="store_true",
+        help="Print hookSpecificOutput JSON for agents that accept hook-injected context.",
+    )
 
     refresh_global = sub.add_parser("refresh-global", help="Refresh memory for the current working directory using global config.")
     refresh_global.add_argument("--config", default=Path.home() / ".obsidianify" / "config.json", type=Path)
@@ -65,6 +70,14 @@ def main() -> int:
         help="Print hookSpecificOutput JSON for agents that accept hook-injected context.",
     )
 
+    record_prompt = sub.add_parser("record-prompt", help="Append a prompt hook payload into an Obsidian session note.")
+    record_prompt.add_argument("--config", default=None, type=Path)
+    record_prompt.add_argument("--vault", default=None, type=Path)
+    record_prompt.add_argument("--project", default="")
+    record_prompt.add_argument("--target", default=Path.cwd(), type=Path)
+    record_prompt.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
+    record_prompt.add_argument("--session-date", default="")
+
     args = parser.parse_args()
     if args.command == "sync":
         sync_vaults(args.vault, args.store)
@@ -73,12 +86,34 @@ def main() -> int:
     elif args.command == "packet":
         generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit)
     elif args.command == "refresh":
-        sync_vaults(args.vault, args.store)
-        rank_graph(args.store, args.project, args.task)
-        generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit)
+        refresh_project(args.vault, args.store, args.project, args.task, args.target, args.agent, args.limit, args.emit_hook_context)
     elif args.command == "refresh-global":
         refresh_from_global_config(args.config, args.agent, args.limit, args.emit_hook_context)
+    elif args.command == "record-prompt":
+        record_prompt_from_hook(args.config, args.vault, args.project, args.target, args.agent, args.session_date)
     return 0
+
+
+def refresh_project(
+    vaults: list[Path],
+    store: Path,
+    project: str,
+    task: str,
+    target: Path,
+    agent: str,
+    limit: int,
+    emit_hook_context: bool = False,
+) -> None:
+    if emit_hook_context:
+        with contextlib.redirect_stdout(io.StringIO()):
+            sync_vaults(vaults, store)
+            rank_graph(store, project, task)
+            packet_path = generate_packet(store, project, task, target, agent, limit)
+        print(json.dumps(hook_context_payload(packet_path, project, agent), ensure_ascii=True))
+    else:
+        sync_vaults(vaults, store)
+        rank_graph(store, project, task)
+        generate_packet(store, project, task, target, agent, limit)
 
 
 def refresh_from_global_config(config_path: Path, agent: str, limit: int, emit_hook_context: bool = False) -> None:
@@ -175,10 +210,8 @@ def read_vault(vault: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]],
         text = path.read_text(encoding="utf-8", errors="ignore")
         frontmatter, body = split_frontmatter(text)
         title = frontmatter.get("title") or path.stem
-        aliases = frontmatter.get("aliases", [])
-        if isinstance(aliases, str):
-            aliases = [aliases]
-        tags = sorted(set(frontmatter.get("tags", []) if isinstance(frontmatter.get("tags"), list) else []))
+        aliases = as_string_list(frontmatter.get("aliases", []))
+        tags = sorted(set(as_string_list(frontmatter.get("tags", []))))
         tags = sorted(set(tags) | set(TAG_RE.findall(body)))
         links = parse_wikilinks(body)
         mtime = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
@@ -231,46 +264,63 @@ def rank_graph(store: Path, project: str, task: str) -> None:
         incoming[edge["target"]] += 1
 
     terms = terms_for(f"{project} {task}")
+    searchable_text = {note["id"]: note_search_text(note) for note in notes}
+    anchor_scores = {
+        note["id"]: text_relevance(terms, searchable_text[note["id"]])
+        for note in notes
+    }
+    anchor_scores = {note_id_value: score for note_id_value, score in anchor_scores.items() if score > 0}
+    adjacency = graph_adjacency(edges)
+    proximity_scores, proximity_sources = graph_proximity(anchor_scores, adjacency)
+    notes_by_id = {note["id"]: note for note in notes}
     max_degree = max(degree.values(), default=1)
     max_incoming = max(incoming.values(), default=1)
     ranked = []
     for note in notes:
-        text = " ".join(
-            [
-                note.get("title", ""),
-                note.get("path", ""),
-                " ".join(note.get("tags", [])),
-                note.get("excerpt", ""),
-            ]
-        )
+        text = searchable_text[note["id"]]
         relevance = text_relevance(terms, text)
+        proximity = proximity_scores.get(note["id"], 0.0)
         centrality = degree[note["id"]] / max_degree
         authority = incoming[note["id"]] / max_incoming
         freshness = freshness_score(note.get("modifiedAt", ""))
         bridge = bridge_score(note, degree[note["id"]], incoming[note["id"]], outgoing[note["id"]])
         evidence = evidence_score(note)
         score = (
-            relevance * 0.35
-            + centrality * 0.18
-            + authority * 0.14
-            + freshness * 0.10
-            + bridge * 0.10
-            + evidence * 0.08
+            proximity * 0.30
+            + relevance * 0.25
+            + centrality * 0.15
+            + authority * 0.10
+            + freshness * 0.08
+            + evidence * 0.07
+            + bridge * 0.05
             + min(len(note.get("tags", [])) / 8, 1.0) * 0.05
         )
+        matched = sorted(terms & set(re.findall(r"[a-z0-9_]+", text.lower())))
+        source = proximity_sources.get(note["id"], {})
+        anchor_note = notes_by_id.get(source.get("anchor", ""))
+        anchor_label = ""
+        if anchor_note:
+            anchor_label = f"{anchor_note.get('title', '')} ({anchor_note.get('path', '')})"
         ranked.append(
             {
                 "id": note["id"],
                 "title": note.get("title", ""),
+                "vault": note.get("vault", ""),
                 "path": note.get("path", ""),
                 "score": round(score, 4),
                 "signals": {
+                    "proximity": round(proximity, 4),
                     "relevance": round(relevance, 4),
                     "centrality": round(centrality, 4),
                     "authority": round(authority, 4),
                     "freshness": round(freshness, 4),
                     "bridge": round(bridge, 4),
                     "evidence": round(evidence, 4),
+                },
+                "why": {
+                    "matchedTerms": matched[:12],
+                    "anchor": anchor_label,
+                    "graphDistance": source.get("distance"),
                 },
                 "tags": note.get("tags", []),
                 "excerpt": note.get("excerpt", ""),
@@ -314,9 +364,18 @@ def generate_packet(store: Path, project: str, task: str, target: Path, agent: s
     ]
     for index, item in enumerate(top, start=1):
         lines.append(f"{index}. {item.get('title')} [{item.get('score')}]")
-        lines.append(f"   - Source: {item.get('path')}")
+        source = f"{item.get('vault')}/{item.get('path')}" if item.get("vault") else item.get("path")
+        lines.append(f"   - Source: {source}")
         if item.get("tags"):
             lines.append(f"   - Tags: {', '.join(item.get('tags', [])[:8])}")
+        why = item.get("why", {})
+        why_parts = []
+        if why.get("matchedTerms"):
+            why_parts.append("matched terms: " + ", ".join(why.get("matchedTerms", [])[:8]))
+        if why.get("anchor"):
+            why_parts.append(f"nearest anchor: {why.get('anchor')} at distance {why.get('graphDistance')}")
+        if why_parts:
+            lines.append(f"   - Selection reason: {'; '.join(why_parts)}")
         if item.get("excerpt"):
             lines.append(f"   - Why it may matter: {item.get('excerpt')}")
         signals = item.get("signals", {})
@@ -373,6 +432,100 @@ def hook_context_payload(packet_path: Path, project: str, agent: str) -> dict[st
     }
 
 
+def record_prompt_from_hook(
+    config_path: Path | None,
+    vault: Path | None,
+    project: str,
+    target: Path,
+    agent: str,
+    session_date: str = "",
+) -> Path | None:
+    config: dict[str, Any] = {}
+    if config_path:
+        config = load_json(config_path)
+    resolved_target = target.resolve()
+    if project:
+        project_name = project
+    elif config:
+        project_name = detect_project_name(resolved_target, config)
+    else:
+        project_name = resolved_target.name
+    vault_path = resolve_session_log_vault(config, vault)
+    if not vault_path:
+        return None
+    raw_payload = sys.stdin.read()
+    prompt_text = extract_prompt_text(raw_payload)
+    if not prompt_text:
+        prompt_text = "[No prompt text found in hook payload.]"
+    date_part = session_date or datetime.now().strftime("%Y-%m-%d")
+    out_dir = vault_path / safe_obsidian_segment(project_name) / f"session{date_part}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "prompts.md"
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    entry = [
+        f"## {timestamp}",
+        "",
+        f"- Agent: {agent}",
+        f"- Project: {project_name}",
+        f"- Target: {resolved_target}",
+        "",
+        "```text",
+        prompt_text.rstrip(),
+        "```",
+        "",
+    ]
+    with out_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(entry))
+    return out_path
+
+
+def resolve_session_log_vault(config: dict[str, Any], vault: Path | None) -> Path | None:
+    if vault:
+        return vault.resolve()
+    configured = config.get("sessionLogVault")
+    if configured:
+        return Path(configured).resolve()
+    vaults = config_vaults(config) if config else []
+    return vaults[0].resolve() if vaults else None
+
+
+def extract_prompt_text(raw_payload: str) -> str:
+    text = raw_payload.strip()
+    if not text:
+        return ""
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    found = find_prompt_value(payload)
+    if found:
+        return found
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def find_prompt_value(value: Any) -> str:
+    if isinstance(value, dict):
+        for key in ("prompt", "userPrompt", "message", "content", "text"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return item
+        for item in value.values():
+            found = find_prompt_value(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = find_prompt_value(item)
+            if found:
+                return found
+    return ""
+
+
+def safe_obsidian_segment(value: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "-", value).strip(" .-")
+    return cleaned or "project"
+
+
 def packet_filename(agent: str) -> str:
     if agent == "codex":
         return "CODEX_SESSION_CONTEXT.md"
@@ -391,8 +544,34 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         return {}, text
     raw = text[4:end].strip()
     body = text[end + 4 :].lstrip()
+    parsed = parse_yaml_frontmatter(raw)
+    if parsed is not None:
+        return parsed, body
+    return parse_frontmatter_fallback(raw), body
+
+
+def parse_yaml_frontmatter(raw: str) -> dict[str, Any] | None:
+    try:
+        import yaml  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    try:
+        data = yaml.safe_load(raw) or {}
+    except Exception:
+        return None
+    return normalize_frontmatter(data) if isinstance(data, dict) else {}
+
+
+def parse_frontmatter_fallback(raw: str) -> dict[str, Any]:
     data: dict[str, Any] = {}
+    current_key = ""
     for line in raw.splitlines():
+        if current_key and line.startswith((" ", "\t")):
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                data.setdefault(current_key, []).append(stripped[2:].strip().strip('"').strip("'"))
+            continue
+        current_key = ""
         if ":" not in line:
             continue
         key, value = line.split(":", 1)
@@ -400,9 +579,30 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             data[key] = [part.strip().strip('"').strip("'") for part in value[1:-1].split(",") if part.strip()]
+        elif value == "":
+            data[key] = []
+            current_key = key
         else:
             data[key] = value.strip('"').strip("'")
-    return data, body
+    return data
+
+
+def normalize_frontmatter(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_frontmatter(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_frontmatter(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def as_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return [str(value)] if str(value) else []
 
 
 def parse_wikilinks(text: str) -> list[str]:
@@ -412,6 +612,71 @@ def parse_wikilinks(text: str) -> list[str]:
         if target:
             links.append(target)
     return sorted(set(links))
+
+
+def note_search_text(note: dict[str, Any]) -> str:
+    frontmatter = note.get("frontmatter", {})
+    frontmatter_values = []
+    if isinstance(frontmatter, dict):
+        for value in frontmatter.values():
+            if isinstance(value, list):
+                frontmatter_values.extend(str(item) for item in value)
+            elif isinstance(value, (str, int, float)):
+                frontmatter_values.append(str(value))
+    return " ".join(
+        [
+            note.get("title", ""),
+            note.get("path", ""),
+            note.get("folder", ""),
+            " ".join(str(item) for item in note.get("aliases", [])),
+            " ".join(str(item) for item in note.get("tags", [])),
+            " ".join(frontmatter_values),
+            note.get("excerpt", ""),
+        ]
+    )
+
+
+def graph_adjacency(edges: list[dict[str, Any]]) -> dict[str, set[str]]:
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if not source or not target or str(target).startswith("unresolved:"):
+            continue
+        adjacency[source].add(target)
+        adjacency[target].add(source)
+    return adjacency
+
+
+def graph_proximity(
+    anchor_scores: dict[str, float],
+    adjacency: dict[str, set[str]],
+    max_distance: int = 3,
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+    scores: dict[str, float] = {}
+    sources: dict[str, dict[str, Any]] = {}
+    queue: deque[tuple[str, str, int, float]] = deque(
+        [
+            (anchor_id, anchor_id, 0, min(score, 1.0))
+            for anchor_id, score in anchor_scores.items()
+        ]
+    )
+    seen: set[tuple[str, str]] = set()
+    while queue:
+        node_id, anchor_id, distance, anchor_score = queue.popleft()
+        key = (node_id, anchor_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        distance_score = anchor_score / (distance + 1)
+        if distance_score > scores.get(node_id, 0.0):
+            scores[node_id] = distance_score
+            sources[node_id] = {"anchor": anchor_id, "distance": distance}
+        if distance >= max_distance:
+            continue
+        for neighbor in adjacency.get(node_id, set()):
+            queue.append((neighbor, anchor_id, distance + 1, anchor_score))
+    return scores, sources
 
 
 def compact_excerpt(text: str) -> str:

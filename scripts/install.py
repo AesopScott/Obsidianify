@@ -56,7 +56,18 @@ def install_codex(target: Path, vaults: list[Path], project: str, task: str) -> 
                         }
                     ],
                 }
-            ]
+            ],
+            "UserPromptSubmit": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": prompt_command(target, vaults, project, "codex"),
+                            "statusMessage": "Recording Obsidianify prompt note",
+                        }
+                    ]
+                }
+            ],
         }
     }
     (codex_dir / "hooks.json").write_text(json.dumps(hook, indent=2), encoding="utf-8")
@@ -101,6 +112,16 @@ def install_claude(target: Path, vaults: list[Path], project: str, task: str) ->
                     "command": command(target, vaults, project, task, "claude"),
                 }
             ],
+        }
+    ]
+    settings["hooks"]["UserPromptSubmit"] = [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": prompt_command(target, vaults, project, "claude"),
+                }
+            ]
         }
     ]
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
@@ -159,6 +180,16 @@ def command(target: Path, vaults: list[Path], project: str, task: str, agent: st
         f'--target "{target}" '
         f'--agent "{agent}" '
         f'--emit-hook-context'
+    )
+
+
+def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
+    return (
+        f'"{sys.executable}" "{OMI}" record-prompt '
+        f'--vault "{vaults[0]}" '
+        f'--project "{project}" '
+        f'--target "{target}" '
+        f'--agent "{agent}"'
     )
 
 

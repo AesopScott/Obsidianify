@@ -11,6 +11,7 @@ Obsidian vault(s)
   -> project proximity selection
   -> generated context packet
   -> global Codex / Claude startup hook, or manual Cowork packet
+  -> prompt submissions appended to Obsidian session notes
 ```
 
 ## Shared Core
@@ -21,28 +22,31 @@ Obsidian vault(s)
 - `scripts/omi.py packet`: generate a session context packet.
 - `scripts/omi.py refresh`: run all three for a connected project.
 - `scripts/omi.py refresh-global`: detect the current working directory and run the global install path.
+- `scripts/omi.py record-prompt`: read prompt hook JSON from stdin and append it to an Obsidian session note.
 
 ## Ranking Philosophy
 
 Rules are signals, not boundaries.
 
-The ranker can use:
+The ranker currently uses:
 
-- semantic relevance
+- project/task term anchors
 - title/path/tag matches
 - backlinks and outgoing links
 - graph centrality
+- graph-distance proximity from matched anchor notes
 - bridge value
 - freshness
 - evidence quality
-- folder proximity
-- prior usefulness
+
+Future ranking can add embeddings, folder proximity, and prior usefulness.
 
 The system should decide the injected slice. Humans should not have to maintain a list of notes to inject.
 
 ## Codex Adapter
 
 - `~/.codex/hooks.json` runs `omi.py refresh-global` at `SessionStart`.
+- `~/.codex/hooks.json` runs `omi.py record-prompt` at `UserPromptSubmit`.
 - `~/.codex/AGENTS.md` tells Codex to read `.obsidian-memory/CODEX_SESSION_CONTEXT.md`.
 - Obsidianify detects the active project from the session working directory.
 - The hook emits a best-effort `hookSpecificOutput.additionalContext` payload. If Codex does not surface hook output as context, the packet file and instruction block remain the fallback.
@@ -50,6 +54,7 @@ The system should decide the injected slice. Humans should not have to maintain 
 ## Claude Adapter
 
 - `~/.claude/settings.json` runs `omi.py refresh-global` at `SessionStart`.
+- `~/.claude/settings.json` runs `omi.py record-prompt` at `UserPromptSubmit`.
 - `~/.claude/CLAUDE.md` tells Claude to read `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`.
 - Obsidianify detects the active project from the session working directory.
 - The hook emits `hookSpecificOutput.additionalContext` with the loaded packet.
@@ -65,8 +70,9 @@ The system should decide the injected slice. Humans should not have to maintain 
 
 1. Direct hook context when supported.
 2. Generated packet file in `.obsidian-memory/`.
-3. Global agent instruction to read the packet.
-4. User fallback prompt for live verification.
+3. Prompt log note in `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
+4. Global agent instruction to read the packet.
+5. User fallback prompt for live verification.
 
 ## Storage
 

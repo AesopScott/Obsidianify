@@ -28,6 +28,7 @@ Graphify for Obsidian:
 6. Selects project-relevant memory by proximity to the project/task.
 7. Generates a context packet.
 8. Injects that packet through Codex or Claude startup hooks, or creates a manual Cowork packet.
+9. Records each prompt submission back into the configured Obsidian vault under `<project>/sessionYYYY-MM-DD/prompts.md`.
 
 The project receiving memory does not need to own the memory system. The memory system can live anywhere, while the generated packet is written into any target project.
 
@@ -240,14 +241,29 @@ When a session starts in a project, Obsidianify writes:
 <current-project>/.obsidian-memory/STATUS.json
 ```
 
+On every prompt submission, Obsidianify appends a Markdown entry to the first enabled vault:
+
+```text
+<vault>/<project-name>/sessionYYYY-MM-DD/prompts.md
+```
+
+Set `sessionLogVault` in `~/.obsidianify/config.json` to choose a different prompt-log vault:
+
+```json
+{
+  "sessionLogVault": "G:\\My Drive\\Obsidian\\SessionLogs"
+}
+```
+
 ## Reliability Stack
 
-Obsidianify uses four layers:
+Obsidianify uses five layers:
 
 1. **Hook context:** the `SessionStart` hook emits a best-effort context payload with the loaded packet.
 2. **RAG store:** the hook refreshes `~/.obsidianify/store/memory_rag_documents.jsonl`.
 3. **Packet file:** the hook writes `.obsidian-memory/*_SESSION_CONTEXT.md` into the active project.
-4. **Agent instruction:** global `AGENTS.md` / `CLAUDE.md` tells the agent to read the packet when asked what was injected.
+4. **Prompt log:** the `UserPromptSubmit` hook appends prompts into an Obsidian session note.
+5. **Agent instruction:** global `AGENTS.md` / `CLAUDE.md` tells the agent to read the packet when asked what was injected.
 
 The explicit fallback prompt is still useful for demos and for agents that do not surface hook output as context.
 
@@ -269,6 +285,8 @@ read Obsidian -> write RAG corpus -> rank graph -> generate packet -> inject pac
 ```
 
 `memory_rag_documents.jsonl` is the portable RAG export. Each line contains a document with `id`, `text`, and metadata such as vault, source path, title, tags, links, and modified time.
+
+The ranker uses matched project/task terms to identify anchor notes, then propagates graph proximity through resolved wikilinks. Linked notes can be selected because they are close to a relevant anchor, even when they do not repeat the project name directly.
 
 ## Optional Project Connect Mode
 

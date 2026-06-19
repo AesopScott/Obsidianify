@@ -61,6 +61,11 @@ def install_codex_global() -> None:
         command=global_command("codex"),
         status_message="Refreshing Obsidianify memory packet",
     )
+    add_user_prompt_hook(
+        hooks,
+        command=global_prompt_command("codex"),
+        status_message="Recording Obsidianify prompt note",
+    )
     write_json(hooks_path, hooks)
     append_block(
         codex_home / "AGENTS.md",
@@ -89,6 +94,7 @@ def install_claude_global() -> None:
     settings_path = claude_home / "settings.json"
     settings = read_json_object(settings_path)
     add_session_start_hook(settings, command=global_command("claude"))
+    add_user_prompt_hook(settings, command=global_prompt_command("claude"))
     write_json(settings_path, settings)
     append_block(
         claude_home / "CLAUDE.md",
@@ -153,12 +159,36 @@ def add_session_start_hook(settings: dict[str, Any], command: str, status_messag
     session_hooks.append(new_group)
 
 
+def add_user_prompt_hook(settings: dict[str, Any], command: str, status_message: str | None = None) -> None:
+    settings.setdefault("hooks", {})
+    prompt_hooks = settings["hooks"].setdefault("UserPromptSubmit", [])
+    hook_entry: dict[str, Any] = {"type": "command", "command": command}
+    if status_message:
+        hook_entry["statusMessage"] = status_message
+    new_group = {"hooks": [hook_entry]}
+    prompt_hooks[:] = [
+        group
+        for group in prompt_hooks
+        if "Obsidianify" not in json.dumps(group) and str(OMI) not in json.dumps(group)
+    ]
+    prompt_hooks.append(new_group)
+
+
 def global_command(agent: str) -> str:
     return (
         f'"{sys.executable}" "{OMI}" refresh-global '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--agent "{agent}" '
         f'--emit-hook-context'
+    )
+
+
+def global_prompt_command(agent: str) -> str:
+    return (
+        f'"{sys.executable}" "{OMI}" record-prompt '
+        f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
+        f'--target "." '
+        f'--agent "{agent}"'
     )
 
 
