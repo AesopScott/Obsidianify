@@ -1,11 +1,11 @@
 ---
 name: obsidianify
-description: Use when setting up, refreshing, debugging, or explaining Obsidianify for Codex or Claude sessions. Reads Obsidian vaults, ranks graph memory by project proximity, creates session context packets, and records prompt history into Obsidian session notes.
+description: Use when setting up, refreshing, debugging, or explaining Obsidianify for Codex or Claude sessions. Reads Obsidian vaults, ranks graph memory by project proximity, creates session context packets, and records valuable completed turn outcomes into typed Obsidian session notes.
 ---
 
 # Obsidianify
 
-Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent prompts back into an Obsidian vault.
+Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent turn outcomes back into an Obsidian vault.
 
 ## Workflow
 
@@ -19,7 +19,8 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 ## Reliability
 
 - `SessionStart` hooks refresh the packet.
-- `UserPromptSubmit` hooks append prompts into `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
+- `UserPromptSubmit` hooks record lightweight turn markers.
+- `Stop` hooks classify completed turn outcomes and write valuable entries into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.
 - The first user prompt can force verification.
 

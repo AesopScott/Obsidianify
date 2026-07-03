@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ def main() -> int:
         ],
         "store": str(OBSIDIANIFY_HOME / "store"),
         "defaultTask": args.default_task,
+        "hookAuditLog": str(OBSIDIANIFY_HOME / "hook-audit.log"),
         "repo": str(ROOT),
     }
     write_json(OBSIDIANIFY_HOME / "config.json", config)
@@ -64,7 +66,12 @@ def install_codex_global() -> None:
     add_user_prompt_hook(
         hooks,
         command=global_prompt_command("codex"),
-        status_message="Recording Obsidianify prompt note",
+        status_message="Recording Obsidianify turn marker",
+    )
+    add_stop_hook(
+        hooks,
+        command=global_turn_command("codex"),
+        status_message="Recording Obsidianify turn outcome",
     )
     write_json(hooks_path, hooks)
     append_block(
@@ -95,6 +102,7 @@ def install_claude_global() -> None:
     settings = read_json_object(settings_path)
     add_session_start_hook(settings, command=global_command("claude"))
     add_user_prompt_hook(settings, command=global_prompt_command("claude"))
+    add_stop_hook(settings, command=global_turn_command("claude"))
     write_json(settings_path, settings)
     append_block(
         claude_home / "CLAUDE.md",
@@ -174,8 +182,23 @@ def add_user_prompt_hook(settings: dict[str, Any], command: str, status_message:
     prompt_hooks.append(new_group)
 
 
+def add_stop_hook(settings: dict[str, Any], command: str, status_message: str | None = None) -> None:
+    settings.setdefault("hooks", {})
+    stop_hooks = settings["hooks"].setdefault("Stop", [])
+    hook_entry: dict[str, Any] = {"type": "command", "command": command}
+    if status_message:
+        hook_entry["statusMessage"] = status_message
+    new_group = {"hooks": [hook_entry]}
+    stop_hooks[:] = [
+        group
+        for group in stop_hooks
+        if "Obsidianify" not in json.dumps(group) and str(OMI) not in json.dumps(group)
+    ]
+    stop_hooks.append(new_group)
+
+
 def global_command(agent: str) -> str:
-    return (
+    return hook_command(
         f'"{sys.executable}" "{OMI}" refresh-global '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--agent "{agent}" '
@@ -184,12 +207,30 @@ def global_command(agent: str) -> str:
 
 
 def global_prompt_command(agent: str) -> str:
-    return (
+    return hook_command(
         f'"{sys.executable}" "{OMI}" record-prompt '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "." '
         f'--agent "{agent}"'
     )
+
+
+def global_turn_command(agent: str) -> str:
+    return hook_command(
+        f'"{sys.executable}" "{OMI}" record-turn '
+        f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
+        f'--target "." '
+        f'--agent "{agent}"'
+    )
+
+
+def hook_command(command: str) -> str:
+    if sys.platform != "win32":
+        return command
+    parts = re.findall(r'"([^"]+)"|(\S+)', command)
+    values = [quoted or bare for quoted, bare in parts]
+    quoted_values = " ".join("'" + value.replace("'", "''") + "'" for value in values)
+    return f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {quoted_values}"'
 
 
 def read_json_object(path: Path) -> dict[str, Any]:

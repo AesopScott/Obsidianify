@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import math
@@ -23,6 +24,157 @@ from typing import Any
 
 WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]]+)\]\]")
 TAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_/-]+)")
+INFORMATION_BUCKET_FILES = {
+    "Architecture": "architecture.md",
+    "Configuration": "configuration.md",
+    "Design": "design.md",
+    "Other": "other.md",
+}
+SIDECAR_FILENAME = "sidecar_memory.json"
+SIDECAR_DISPLAY_LIMIT = 50
+LOW_VALUE_PROMPTS = {
+    "ok",
+    "okay",
+    "yes",
+    "no",
+    "y",
+    "n",
+    "thanks",
+    "thank you",
+    "continue",
+    "go on",
+    "proceed",
+    "sounds good",
+}
+NOISE_TERMS = {
+    "heartbeat-check",
+    "handoff-check",
+    "unchanged",
+}
+DELEGATION_MARKERS = {
+    "<codex_delegation>",
+    "</codex_delegation>",
+}
+VALUABLE_TERMS = {
+    "add",
+    "agent",
+    "architecture",
+    "authority",
+    "build",
+    "change",
+    "classify",
+    "config",
+    "configuration",
+    "contract",
+    "create",
+    "decision",
+    "design",
+    "enable",
+    "fix",
+    "handoff",
+    "hook",
+    "implement",
+    "install",
+    "memory",
+    "obsidian",
+    "obsidianify",
+    "pipeline",
+    "project",
+    "record",
+    "repo",
+    "role",
+    "scaffold",
+    "skill",
+    "test",
+    "trust",
+    "update",
+    "write",
+}
+CONFIGURATION_TERMS = {
+    ".env",
+    ".json",
+    ".toml",
+    ".yaml",
+    ".yml",
+    "automation",
+    "caveman",
+    "config",
+    "configuration",
+    "enabled",
+    "hook",
+    "install",
+    "path",
+    "setting",
+    "setup",
+    "toml",
+    "trust",
+}
+ARCHITECTURE_TERMS = {
+    "adapter",
+    "agent",
+    "architecture",
+    "authority",
+    "backfill",
+    "boundary",
+    "classifier",
+    "contract",
+    "controller",
+    "eval",
+    "handoff",
+    "maps",
+    "memory",
+    "m0",
+    "m1",
+    "m2",
+    "m3",
+    "m4",
+    "m5",
+    "m6",
+    "m7",
+    "m8",
+    "m9",
+    "m10",
+    "m11",
+    "operator",
+    "orchestration",
+    "pipeline",
+    "post-turn",
+    "role",
+    "runtime",
+    "skill",
+    "scaffold",
+    "system",
+    "validator",
+}
+DESIGN_TERMS = {
+    "component",
+    "design",
+    "flow",
+    "interface",
+    "layout",
+    "page",
+    "profile",
+    "screen",
+    "ui",
+    "ux",
+    "voice",
+}
+OUTCOME_TERMS = {
+    "added",
+    "approved",
+    "built",
+    "changed",
+    "completed",
+    "created",
+    "fixed",
+    "implemented",
+    "outcome",
+    "passed",
+    "routed",
+    "updated",
+    "validated",
+    "verified",
+}
 
 
 def main() -> int:
@@ -45,6 +197,8 @@ def main() -> int:
     packet.add_argument("--target", required=True, type=Path)
     packet.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     packet.add_argument("--limit", default=20, type=int)
+    packet.add_argument("--max-excerpt-chars", default=None, type=int, help="Max chars per node excerpt (default: 260).")
+    packet.add_argument("--signals-verbosity", default=None, choices=("full", "compact", "none"), help="Signal metadata verbosity: full (all 7), compact (top 3), none (omit).")
 
     refresh = sub.add_parser("refresh", help="Sync, rank, and write a session packet.")
     refresh.add_argument("--vault", action="append", required=True, type=Path)
@@ -54,6 +208,8 @@ def main() -> int:
     refresh.add_argument("--target", required=True, type=Path)
     refresh.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     refresh.add_argument("--limit", default=20, type=int)
+    refresh.add_argument("--max-excerpt-chars", default=None, type=int, help="Max chars per node excerpt (default: 260).")
+    refresh.add_argument("--signals-verbosity", default=None, choices=("full", "compact", "none"), help="Signal metadata verbosity: full (all 7), compact (top 3), none (omit).")
     refresh.add_argument(
         "--emit-hook-context",
         action="store_true",
@@ -64,13 +220,15 @@ def main() -> int:
     refresh_global.add_argument("--config", default=Path.home() / ".obsidianify" / "config.json", type=Path)
     refresh_global.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     refresh_global.add_argument("--limit", default=20, type=int)
+    refresh_global.add_argument("--max-excerpt-chars", default=None, type=int, help="Max chars per node excerpt (default: config or 260).")
+    refresh_global.add_argument("--signals-verbosity", default=None, choices=("full", "compact", "none"), help="Signal metadata verbosity: full (all 7), compact (top 3), none (omit).")
     refresh_global.add_argument(
         "--emit-hook-context",
         action="store_true",
         help="Print hookSpecificOutput JSON for agents that accept hook-injected context.",
     )
 
-    record_prompt = sub.add_parser("record-prompt", help="Append a prompt hook payload into an Obsidian session note.")
+    record_prompt = sub.add_parser("record-prompt", help="Record a prompt-submit marker for the next post-turn write.")
     record_prompt.add_argument("--config", default=None, type=Path)
     record_prompt.add_argument("--vault", default=None, type=Path)
     record_prompt.add_argument("--project", default="")
@@ -78,19 +236,42 @@ def main() -> int:
     record_prompt.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
     record_prompt.add_argument("--session-date", default="")
 
+    record_turn = sub.add_parser("record-turn", help="Write valuable completed turn outcomes into typed Obsidian notes.")
+    record_turn.add_argument("--config", default=None, type=Path)
+    record_turn.add_argument("--vault", default=None, type=Path)
+    record_turn.add_argument("--project", default="")
+    record_turn.add_argument("--target", default=Path.cwd(), type=Path)
+    record_turn.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
+    record_turn.add_argument("--session-date", default="")
+    record_turn.add_argument("--session-log", default=None, type=Path)
+
+    replay_session = sub.add_parser("replay-session", help="Backfill valuable completed turn outcomes from a Codex session log.")
+    replay_session.add_argument("--config", default=None, type=Path)
+    replay_session.add_argument("--vault", default=None, type=Path)
+    replay_session.add_argument("--project", default="")
+    replay_session.add_argument("--target", default=Path.cwd(), type=Path)
+    replay_session.add_argument("--agent", choices=("codex", "claude", "cowork"), required=True)
+    replay_session.add_argument("--session-date", default="")
+    replay_session.add_argument("--session-log", required=True, type=Path)
+    replay_session.add_argument("--limit", default=25, type=int, help="Max newest completed turns to replay. Use 0 for all.")
+
     args = parser.parse_args()
     if args.command == "sync":
         sync_vaults(args.vault, args.store)
     elif args.command == "rank":
         rank_graph(args.store, args.project, args.task)
     elif args.command == "packet":
-        generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit)
+        generate_packet(args.store, args.project, args.task, args.target, args.agent, args.limit, args.max_excerpt_chars, args.signals_verbosity)
     elif args.command == "refresh":
-        refresh_project(args.vault, args.store, args.project, args.task, args.target, args.agent, args.limit, args.emit_hook_context)
+        refresh_project(args.vault, args.store, args.project, args.task, args.target, args.agent, args.limit, args.emit_hook_context, args.max_excerpt_chars, args.signals_verbosity)
     elif args.command == "refresh-global":
-        refresh_from_global_config(args.config, args.agent, args.limit, args.emit_hook_context)
+        refresh_from_global_config(args.config, args.agent, args.limit, args.emit_hook_context, args.max_excerpt_chars, args.signals_verbosity)
     elif args.command == "record-prompt":
         record_prompt_from_hook(args.config, args.vault, args.project, args.target, args.agent, args.session_date)
+    elif args.command == "record-turn":
+        record_turn_from_hook(args.config, args.vault, args.project, args.target, args.agent, args.session_date, args.session_log)
+    elif args.command == "replay-session":
+        replay_session_log(args.config, args.vault, args.project, args.target, args.agent, args.session_date, args.session_log, args.limit)
     return 0
 
 
@@ -103,36 +284,47 @@ def refresh_project(
     agent: str,
     limit: int,
     emit_hook_context: bool = False,
+    max_excerpt_chars: int | None = None,
+    signals_verbosity: str | None = None,
 ) -> None:
     if emit_hook_context:
         with contextlib.redirect_stdout(io.StringIO()):
             sync_vaults(vaults, store)
             rank_graph(store, project, task)
-            packet_path = generate_packet(store, project, task, target, agent, limit)
+            packet_path = generate_packet(store, project, task, target, agent, limit, max_excerpt_chars, signals_verbosity)
         print(json.dumps(hook_context_payload(packet_path, project, agent), ensure_ascii=True))
     else:
         sync_vaults(vaults, store)
         rank_graph(store, project, task)
-        generate_packet(store, project, task, target, agent, limit)
+        generate_packet(store, project, task, target, agent, limit, max_excerpt_chars, signals_verbosity)
 
 
-def refresh_from_global_config(config_path: Path, agent: str, limit: int, emit_hook_context: bool = False) -> None:
+def refresh_from_global_config(
+    config_path: Path,
+    agent: str,
+    limit: int,
+    emit_hook_context: bool = False,
+    max_excerpt_chars: int | None = None,
+    signals_verbosity: str | None = None,
+) -> None:
     config = load_json(config_path)
     target = Path.cwd().resolve()
     project = detect_project_name(target, config)
     task = config.get("defaultTask", "general project session")
     vaults = config_vaults(config)
     store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
+    resolved_max_excerpt = max_excerpt_chars if max_excerpt_chars is not None else config.get("maxExcerptChars")
+    resolved_signals_verbosity = signals_verbosity if signals_verbosity is not None else config.get("signalsVerbosity")
     if emit_hook_context:
         with contextlib.redirect_stdout(io.StringIO()):
             sync_vaults(vaults, store)
             rank_graph(store, project, task)
-            packet_path = generate_packet(store, project, task, target, agent, limit)
+            packet_path = generate_packet(store, project, task, target, agent, limit, resolved_max_excerpt, resolved_signals_verbosity)
         print(json.dumps(hook_context_payload(packet_path, project, agent), ensure_ascii=True))
     else:
         sync_vaults(vaults, store)
         rank_graph(store, project, task)
-        generate_packet(store, project, task, target, agent, limit)
+        generate_packet(store, project, task, target, agent, limit, resolved_max_excerpt, resolved_signals_verbosity)
 
 
 def detect_project_name(target: Path, config: dict[str, Any]) -> str:
@@ -339,7 +531,59 @@ def rank_graph(store: Path, project: str, task: str) -> None:
     print(f"Ranked {len(ranked)} notes for {project!r} -> {store / 'memory_rankings.json'}")
 
 
-def generate_packet(store: Path, project: str, task: str, target: Path, agent: str, limit: int) -> Path:
+def sidecar_memory_path(target: Path) -> Path:
+    return target / ".obsidian-memory" / SIDECAR_FILENAME
+
+
+def load_sidecar_entries(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    entries = data.get("entries", [])
+    if not isinstance(entries, list):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict) and str(entry.get("text", "")).strip()]
+
+
+def sidecar_memory_lines(path: Path) -> list[str]:
+    entries = load_sidecar_entries(path)
+    if not entries:
+        return []
+    shown = entries[-SIDECAR_DISPLAY_LIMIT:]
+    lines = ["## Sidecar Memory", ""]
+    if len(shown) < len(entries):
+        lines.append(f"(Showing most recent {len(shown)} of {len(entries)} entries. Edit {path} directly to prune.)")
+        lines.append("")
+    for index, entry in enumerate(shown, start=1):
+        text = str(entry.get("text", "")).strip()
+        meta_parts = []
+        if entry.get("addedAt"):
+            meta_parts.append(str(entry["addedAt"]))
+        if entry.get("addedBy"):
+            meta_parts.append(f"by {entry['addedBy']}")
+        meta = f" ({', '.join(meta_parts)})" if meta_parts else ""
+        lines.append(f"{index}. {text}{meta}")
+    lines.append("")
+    return lines
+
+
+def generate_packet(
+    store: Path,
+    project: str,
+    task: str,
+    target: Path,
+    agent: str,
+    limit: int,
+    max_excerpt_chars: int | None = None,
+    signals_verbosity: str | None = None,
+) -> Path:
+    excerpt_limit = max_excerpt_chars if max_excerpt_chars is not None else 260
+    sig_verbosity = signals_verbosity if signals_verbosity is not None else "full"
     rankings = load_json(store / "memory_rankings.json")
     top = rankings.get("ranked", [])[:limit]
     out_dir = target / ".obsidian-memory"
@@ -377,21 +621,31 @@ def generate_packet(store: Path, project: str, task: str, target: Path, agent: s
         if why_parts:
             lines.append(f"   - Selection reason: {'; '.join(why_parts)}")
         if item.get("excerpt"):
-            lines.append(f"   - Why it may matter: {item.get('excerpt')}")
+            excerpt = item.get("excerpt", "")
+            if len(excerpt) > excerpt_limit:
+                excerpt = excerpt[:excerpt_limit].rstrip() + "…"
+            lines.append(f"   - Why it may matter: {excerpt}")
         signals = item.get("signals", {})
-        lines.append(
-            "   - Signals: "
-            + ", ".join(f"{key}={value}" for key, value in signals.items() if value)
-        )
+        if sig_verbosity == "full":
+            lines.append(
+                "   - Signals: "
+                + ", ".join(f"{key}={value}" for key, value in signals.items() if value)
+            )
+        elif sig_verbosity == "compact":
+            top = sorted(signals.items(), key=lambda kv: kv[1], reverse=True)[:3]
+            lines.append(
+                "   - Signals: "
+                + ", ".join(f"{key}={value}" for key, value in top if value)
+            )
+        # sig_verbosity == "none": omit signals line
         lines.append("")
-    lines.extend(
-        [
-            "## Agent Instruction",
-            "",
-            "Use this packet as Obsidian-derived memory for this session. If asked what was injected, summarize this packet and cite the source paths above. Do not claim to know the whole vault from this packet.",
-            "",
-        ]
-    )
+    sidecar_path = sidecar_memory_path(target)
+    sidecar_entries = load_sidecar_entries(sidecar_path)
+    lines.extend(sidecar_memory_lines(sidecar_path))
+    instruction = "Use this packet as Obsidian-derived memory for this session. If asked what was injected, summarize this packet and cite the source paths above. Do not claim to know the whole vault from this packet."
+    if sidecar_entries:
+        instruction += " Sidecar Memory entries are hand-maintained; treat them as directly authoritative."
+    lines.extend(["## Agent Instruction", "", instruction, ""])
     packet_path.write_text("\n".join(lines), encoding="utf-8")
     write_json(
         status_path,
@@ -404,6 +658,7 @@ def generate_packet(store: Path, project: str, task: str, target: Path, agent: s
             "store": str(store.resolve()),
             "generatedAt": utc_now(),
             "memoryCount": len(top),
+            "sidecarCount": len(sidecar_entries),
         },
     )
     print(f"Wrote {agent} packet -> {packet_path}")
@@ -440,27 +695,110 @@ def record_prompt_from_hook(
     agent: str,
     session_date: str = "",
 ) -> Path | None:
-    config: dict[str, Any] = {}
-    if config_path:
-        config = load_json(config_path)
-    resolved_target = target.resolve()
-    if project:
-        project_name = project
-    elif config:
-        project_name = detect_project_name(resolved_target, config)
-    else:
-        project_name = resolved_target.name
-    vault_path = resolve_session_log_vault(config, vault)
-    if not vault_path:
-        return None
+    config, project_name, resolved_target, _vault_path = resolve_recording_context(config_path, vault, project, target)
     raw_payload = sys.stdin.read()
     prompt_text = extract_prompt_text(raw_payload)
     if not prompt_text:
         prompt_text = "[No prompt text found in hook payload.]"
+    marker = {
+        "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "agent": agent,
+        "project": project_name,
+        "target": str(resolved_target),
+        "promptHash": short_hash(prompt_text),
+        "prompt": prompt_text,
+    }
+    append_jsonl(prompt_marker_path(config), marker)
+    write_hook_audit(config, "record-prompt stored turn marker", agent, project_name, resolved_target, None)
+    return None
+
+
+def record_turn_from_hook(
+    config_path: Path | None,
+    vault: Path | None,
+    project: str,
+    target: Path,
+    agent: str,
+    session_date: str = "",
+    session_log: Path | None = None,
+) -> Path | None:
+    config, project_name, resolved_target, vault_path = resolve_recording_context(config_path, vault, project, target)
+    if not vault_path:
+        write_hook_audit(config, "record-turn skipped: no session log vault", agent, project_name, resolved_target, None)
+        return None
+    log_path = session_log or find_latest_session_log(resolved_target, agent)
+    if not log_path:
+        write_hook_audit(config, "record-turn skipped: no session log found", agent, project_name, resolved_target, None)
+        return None
+    turns = read_completed_turns(log_path, agent)
+    if not turns:
+        write_hook_audit(config, f"record-turn skipped: no completed turns in {log_path}", agent, project_name, resolved_target, None)
+        return None
+    turn = turns[-1]
+    return write_turn_note(config, vault_path, project_name, resolved_target, agent, session_date, log_path, turn)
+
+
+def replay_session_log(
+    config_path: Path | None,
+    vault: Path | None,
+    project: str,
+    target: Path,
+    agent: str,
+    session_date: str = "",
+    session_log: Path | None = None,
+    limit: int = 25,
+) -> list[Path]:
+    if session_log is None:
+        raise SystemExit("--session-log is required")
+    config, project_name, resolved_target, vault_path = resolve_recording_context(config_path, vault, project, target)
+    if not vault_path:
+        write_hook_audit(config, "replay-session skipped: no session log vault", agent, project_name, resolved_target, None)
+        return []
+    written = []
+    turns = read_completed_turns(session_log, agent)
+    if limit > 0:
+        turns = turns[-limit:]
+    for turn in turns:
+        out_path = write_turn_note(config, vault_path, project_name, resolved_target, agent, session_date, session_log, turn)
+        if out_path:
+            written.append(out_path)
+    write_hook_audit(config, f"replay-session wrote {len(written)} note(s)", agent, project_name, resolved_target, None)
+    return written
+
+
+def write_turn_note(
+    config: dict[str, Any],
+    vault_path: Path,
+    project_name: str,
+    resolved_target: Path,
+    agent: str,
+    session_date: str,
+    session_log: Path,
+    turn: dict[str, str],
+) -> Path | None:
+    outcome_text = turn.get("outcome", "").strip()
+    classification = classify_turn_write(outcome_text)
+    turn_key = turn_hash(session_log, turn)
+    if processed_turn(config, turn_key):
+        write_hook_audit(config, f"record-turn skipped: duplicate turn {turn_key}", agent, project_name, resolved_target, None)
+        return None
+    if not classification["valuable"]:
+        mark_turn_processed(config, turn_key)
+        write_hook_audit(
+            config,
+            f"record-turn skipped: not valuable ({classification['reason']})",
+            agent,
+            project_name,
+            resolved_target,
+            None,
+        )
+        return None
     date_part = session_date or datetime.now().strftime("%Y-%m-%d")
     out_dir = vault_path / safe_obsidian_segment(project_name) / f"session{date_part}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "prompts.md"
+    info_type = classification["information_type"]
+    out_path = out_dir / INFORMATION_BUCKET_FILES[info_type]
+    marker = latest_prompt_marker(config, project_name, resolved_target)
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     entry = [
         f"## {timestamp}",
@@ -468,15 +806,309 @@ def record_prompt_from_hook(
         f"- Agent: {agent}",
         f"- Project: {project_name}",
         f"- Target: {resolved_target}",
+        f"- Source: completed turn",
+        f"- Session Log: {session_log}",
+        f"- Turn Id: {turn.get('turn_id', '')}",
+        f"- Classification: valuable",
+        f"- Information Type: {info_type}",
+        f"- Reason: {classification['reason']}",
+        f"- Trigger Prompt Hash: {marker.get('promptHash', '')}",
         "",
-        "```text",
-        prompt_text.rstrip(),
-        "```",
+        "### Outcome",
+        "",
+        summarize_outcome_text(outcome_text),
         "",
     ]
     with out_path.open("a", encoding="utf-8") as handle:
         handle.write("\n".join(entry))
+    mark_turn_processed(config, turn_key)
+    write_hook_audit(config, f"record-turn wrote {info_type.lower()} note", agent, project_name, resolved_target, out_path)
     return out_path
+
+
+def classify_prompt_write(prompt_text: str) -> dict[str, Any]:
+    return classify_turn_write(prompt_text)
+
+
+def classify_turn_write(text: str) -> dict[str, Any]:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    lowered = normalized.lower()
+    token_set = set(re.findall(r"[a-z0-9_+-]+", lowered))
+    if not lowered:
+        return {"valuable": False, "information_type": "Other", "reason": "empty"}
+    if lowered in LOW_VALUE_PROMPTS:
+        return {"valuable": False, "information_type": "Other", "reason": "low-value acknowledgement"}
+    if is_noise_payload(lowered, token_set):
+        return {"valuable": False, "information_type": "Other", "reason": "routine automation/delegation noise"}
+    scores = information_scores(lowered, token_set)
+    signal_terms = token_set & (VALUABLE_TERMS | OUTCOME_TERMS | ARCHITECTURE_TERMS | CONFIGURATION_TERMS | DESIGN_TERMS)
+    valuable = bool(signal_terms) or max(scores.values(), default=0) >= 2
+    if not valuable:
+        return {"valuable": False, "information_type": "Other", "reason": "no durable signal"}
+    info_type = max(scores, key=scores.get)
+    if scores[info_type] <= 0:
+        info_type = "Other"
+    return {"valuable": True, "information_type": info_type, "reason": "durable outcome signal"}
+
+
+def information_scores(lowered: str, token_set: set[str]) -> dict[str, int]:
+    scores = {
+        "Architecture": score_terms(lowered, token_set, ARCHITECTURE_TERMS),
+        "Configuration": score_terms(lowered, token_set, CONFIGURATION_TERMS | {"hook trust", "hooks.json", "config.toml"}),
+        "Design": score_terms(lowered, token_set, DESIGN_TERMS),
+        "Other": 0,
+    }
+    outcome_hits = len(token_set & OUTCOME_TERMS)
+    if outcome_hits:
+        scores["Architecture"] += outcome_hits
+    if any(term in lowered for term in ("validated", "validator", "scaffold", "maps-data", "phase skill", "post-turn", "runtime gate")):
+        scores["Architecture"] += 3
+    if any(term in lowered for term in ("voice profile", "profile page", "layout", "ui", "interface")):
+        scores["Design"] += 3
+    if any(term in lowered for term in ("config", "hook", "toml", "json", "path")) and scores["Architecture"] < 3:
+        scores["Configuration"] += 1
+    return scores
+
+
+def score_terms(lowered: str, token_set: set[str], terms: set[str]) -> int:
+    score = len(token_set & terms)
+    score += sum(1 for term in terms if " " in term and term in lowered)
+    return score
+
+
+def is_noise_payload(lowered: str, token_set: set[str]) -> bool:
+    if any(marker in lowered for marker in DELEGATION_MARKERS):
+        return True
+    if token_set & NOISE_TERMS and "unchanged" in token_set and "outcome" not in token_set:
+        return True
+    unchanged_lines = sum(1 for line in lowered.splitlines() if "handoff-check" in line and "unchanged" in line)
+    return unchanged_lines >= 3
+
+
+def resolve_recording_context(
+    config_path: Path | None,
+    vault: Path | None,
+    project: str,
+    target: Path,
+) -> tuple[dict[str, Any], str, Path, Path | None]:
+    config: dict[str, Any] = {}
+    if config_path:
+        config = load_json(config_path)
+    resolved_target = resolve_hook_target(target, config)
+    if project:
+        project_name = project
+    elif config:
+        project_name = detect_project_name(resolved_target, config)
+    else:
+        project_name = resolved_target.name
+    return config, project_name, resolved_target, resolve_session_log_vault(config, vault)
+
+
+def session_log_root(agent: str) -> Path | None:
+    if agent == "codex":
+        return Path.home() / ".codex" / "sessions"
+    if agent == "claude":
+        return Path.home() / ".claude" / "projects"
+    return None
+
+
+def find_latest_session_log(target: Path, agent: str) -> Path | None:
+    root = session_log_root(agent)
+    if root is None or not root.exists():
+        return None
+    candidates = sorted(root.rglob("*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for candidate in candidates[:80]:
+        cwd = session_log_cwd(candidate)
+        if cwd and (cwd == target or target in cwd.parents or cwd in target.parents):
+            return candidate
+    # codex: legacy fallback to newest log. claude logs for every project live under one
+    # root, so a blind newest-fallback would bleed another project's turn into this vault.
+    # Require a cwd match for claude instead.
+    if agent == "codex":
+        return candidates[0] if candidates else None
+    return None
+
+
+def session_log_cwd(path: Path) -> Path | None:
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for raw in handle:
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                # claude: cwd is stamped on every top-level event.
+                cwd = event.get("cwd")
+                # codex: cwd lives in the session_meta payload.
+                if not cwd and event.get("type") == "session_meta":
+                    cwd = event.get("payload", {}).get("cwd")
+                if cwd:
+                    return Path(str(cwd)).resolve()
+    except Exception:
+        return None
+    return None
+
+
+def read_completed_turns(path: Path, agent: str = "codex") -> list[dict[str, str]]:
+    if agent == "claude":
+        return read_claude_turns(path)
+    return read_codex_turns(path)
+
+
+def read_codex_turns(path: Path) -> list[dict[str, str]]:
+    turns = []
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for raw in handle:
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                payload = event.get("payload", {})
+                if event.get("type") != "event_msg" or payload.get("type") != "task_complete":
+                    continue
+                outcome = str(payload.get("last_agent_message", "")).strip()
+                if not outcome:
+                    continue
+                turns.append(
+                    {
+                        "turn_id": str(payload.get("turn_id", "")),
+                        "timestamp": str(event.get("timestamp", "")),
+                        "outcome": outcome,
+                    }
+                )
+    except FileNotFoundError:
+        return []
+    return turns
+
+
+def read_claude_turns(path: Path) -> list[dict[str, str]]:
+    # A completed claude turn is an assistant message that stopped to hand control back
+    # to the user (stop_reason == "end_turn"); messages that stop for "tool_use" are
+    # mid-turn. The outcome is the concatenation of that message's text blocks.
+    turns = []
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for raw in handle:
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("type") != "assistant":
+                    continue
+                message = event.get("message", {})
+                if message.get("stop_reason") != "end_turn":
+                    continue
+                outcome = "".join(
+                    block.get("text", "")
+                    for block in message.get("content", [])
+                    if isinstance(block, dict) and block.get("type") == "text"
+                ).strip()
+                if not outcome:
+                    continue
+                turns.append(
+                    {
+                        "turn_id": str(event.get("uuid", "")),
+                        "timestamp": str(event.get("timestamp", "")),
+                        "outcome": outcome,
+                    }
+                )
+    except FileNotFoundError:
+        return []
+    return turns
+
+
+def summarize_outcome_text(text: str, limit: int = 1800) -> str:
+    cleaned = re.sub(r"\n{3,}", "\n\n", text.strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "\n\n[Outcome truncated by Obsidianify.]"
+
+
+def prompt_marker_path(config: dict[str, Any]) -> Path:
+    store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
+    return store / "prompt-markers.jsonl"
+
+
+def latest_prompt_marker(config: dict[str, Any], project: str, target: Path) -> dict[str, str]:
+    path = prompt_marker_path(config)
+    if not path.exists():
+        return {}
+    latest: dict[str, str] = {}
+    try:
+        for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            marker = json.loads(raw)
+            if marker.get("project") == project and marker.get("target") == str(target):
+                latest = {str(key): str(value) for key, value in marker.items()}
+    except Exception:
+        return latest
+    return latest
+
+
+def turn_state_path(config: dict[str, Any]) -> Path:
+    store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
+    return store / "turn-writes.json"
+
+
+def processed_turn(config: dict[str, Any], turn_key: str) -> bool:
+    path = turn_state_path(config)
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    return turn_key in set(data.get("processed", []))
+
+
+def mark_turn_processed(config: dict[str, Any], turn_key: str) -> None:
+    path = turn_state_path(config)
+    data = {"processed": []}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except json.JSONDecodeError:
+            pass
+    processed = list(dict.fromkeys([*data.get("processed", []), turn_key]))
+    data["processed"] = processed[-5000:]
+    write_json(path, data)
+
+
+def turn_hash(session_log: Path, turn: dict[str, str]) -> str:
+    return short_hash(f"{session_log.resolve()}::{turn.get('turn_id')}::{turn.get('outcome')}")
+
+
+def short_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def append_jsonl(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(value, ensure_ascii=True) + "\n")
+
+
+def resolve_hook_target(target: Path, config: dict[str, Any]) -> Path:
+    if str(target) not in {"", "."}:
+        return target.resolve()
+    cwd = Path.cwd().resolve()
+    target_overrides = config.get("hookTargets", {})
+    if isinstance(target_overrides, dict):
+        for configured in target_overrides.values():
+            path = Path(str(configured)).expanduser().resolve()
+            if cwd == path or path in cwd.parents:
+                return path
+    projects = config.get("projects", {})
+    if isinstance(projects, dict):
+        for data in projects.values():
+            if not isinstance(data, dict) or not data.get("path"):
+                continue
+            path = Path(str(data["path"])).expanduser().resolve()
+            if cwd == path or path in cwd.parents:
+                return path
+    return cwd
 
 
 def resolve_session_log_vault(config: dict[str, Any], vault: Path | None) -> Path | None:
@@ -487,6 +1119,28 @@ def resolve_session_log_vault(config: dict[str, Any], vault: Path | None) -> Pat
         return Path(configured).resolve()
     vaults = config_vaults(config) if config else []
     return vaults[0].resolve() if vaults else None
+
+
+def write_hook_audit(
+    config: dict[str, Any],
+    message: str,
+    agent: str,
+    project: str,
+    target: Path,
+    output: Path | None,
+) -> None:
+    audit_path = Path(config.get("hookAuditLog", str(Path.home() / ".obsidianify" / "hook-audit.log")))
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    line = {
+        "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "message": message,
+        "agent": agent,
+        "project": project,
+        "target": str(target),
+        "output": str(output) if output else "",
+    }
+    with audit_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(line, ensure_ascii=True) + "\n")
 
 
 def extract_prompt_text(raw_payload: str) -> str:

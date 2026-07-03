@@ -21,11 +21,12 @@ python scripts\install_global.py `
 ## What Happens
 
 1. A `SessionStart` hook refreshes the ranked memory packet.
-2. A `UserPromptSubmit` hook appends prompts into `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
-2. Obsidianify detects the current project from the session working directory.
-3. Global `AGENTS.md` tells Codex to read `.obsidian-memory/CODEX_SESSION_CONTEXT.md`.
-4. The hook also emits a best-effort context payload for agents that surface hook context.
-5. Codex can answer what Obsidian-derived memory was injected.
+2. A `UserPromptSubmit` hook records a lightweight turn marker.
+3. A `Stop` hook reads the completed Codex turn and writes valuable assistant/build outcomes into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
+4. Obsidianify detects the current project from the session working directory.
+5. Global `AGENTS.md` tells Codex to read `.obsidian-memory/CODEX_SESSION_CONTEXT.md`.
+6. The hook also emits a best-effort context payload for agents that surface hook context.
+7. Codex can answer what Obsidian-derived memory was injected.
 
 ## Verification Prompt
 

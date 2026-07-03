@@ -21,11 +21,12 @@ python scripts\install_global.py `
 ## What Happens
 
 1. A Claude `SessionStart` hook refreshes the ranked memory packet.
-2. A `UserPromptSubmit` hook appends prompts into `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
-2. Obsidianify detects the current project from the session working directory.
-3. Global `CLAUDE.md` tells Claude to read `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`.
-4. The hook emits `hookSpecificOutput.additionalContext` with the loaded packet.
-5. Claude can answer what Obsidian-derived memory was injected.
+2. A `UserPromptSubmit` hook records a lightweight turn marker.
+3. A `Stop` hook records valuable completed turn outcomes into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/` when a compatible session log is available.
+4. Obsidianify detects the current project from the session working directory.
+5. Global `CLAUDE.md` tells Claude to read `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`.
+6. The hook emits `hookSpecificOutput.additionalContext` with the loaded packet.
+7. Claude can answer what Obsidian-derived memory was injected.
 
 ## Reliability Note
 

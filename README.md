@@ -28,7 +28,7 @@ Graphify for Obsidian:
 6. Selects project-relevant memory by proximity to the project/task.
 7. Generates a context packet.
 8. Injects that packet through Codex or Claude startup hooks, or creates a manual Cowork packet.
-9. Records each prompt submission back into the configured Obsidian vault under `<project>/sessionYYYY-MM-DD/prompts.md`.
+9. Records prompt-submit markers, then classifies completed turn outcomes and writes valuable assistant/build results into Architecture, Configuration, Design, or Other session notes.
 
 The project receiving memory does not need to own the memory system. The memory system can live anywhere, while the generated packet is written into any target project.
 
@@ -241,11 +241,27 @@ When a session starts in a project, Obsidianify writes:
 <current-project>/.obsidian-memory/STATUS.json
 ```
 
-On every prompt submission, Obsidianify appends a Markdown entry to the first enabled vault:
+On prompt submission, Obsidianify records a lightweight marker for correlation. After the turn finishes, the post-turn hook reads the completed session outcome, skips low-value or noisy turns, and writes valuable assistant/build results to one of four bucket notes:
 
 ```text
-<vault>/<project-name>/sessionYYYY-MM-DD/prompts.md
+<vault>/<project-name>/sessionYYYY-MM-DD/architecture.md
+<vault>/<project-name>/sessionYYYY-MM-DD/configuration.md
+<vault>/<project-name>/sessionYYYY-MM-DD/design.md
+<vault>/<project-name>/sessionYYYY-MM-DD/other.md
 ```
+
+Existing Codex session logs can be backfilled with a bounded replay:
+
+```powershell
+python scripts\omi.py replay-session `
+  --config "$env:USERPROFILE\.obsidianify\config.json" `
+  --target "C:\path\to\project" `
+  --agent codex `
+  --session-log "$env:USERPROFILE\.codex\sessions\YYYY\MM\DD\rollout-....jsonl" `
+  --limit 25
+```
+
+Use `--limit 0` only when intentionally replaying every completed turn in a long session.
 
 Set `sessionLogVault` in `~/.obsidianify/config.json` to choose a different prompt-log vault:
 
@@ -262,7 +278,7 @@ Obsidianify uses five layers:
 1. **Hook context:** the `SessionStart` hook emits a best-effort context payload with the loaded packet.
 2. **RAG store:** the hook refreshes `~/.obsidianify/store/memory_rag_documents.jsonl`.
 3. **Packet file:** the hook writes `.obsidian-memory/*_SESSION_CONTEXT.md` into the active project.
-4. **Prompt log:** the `UserPromptSubmit` hook appends prompts into an Obsidian session note.
+4. **Turn outcome log:** the `UserPromptSubmit` hook records a marker, and the `Stop` hook classifies the completed response/build outcome into typed Obsidian session notes.
 5. **Agent instruction:** global `AGENTS.md` / `CLAUDE.md` tells the agent to read the packet when asked what was injected.
 
 The explicit fallback prompt is still useful for demos and for agents that do not surface hook output as context.

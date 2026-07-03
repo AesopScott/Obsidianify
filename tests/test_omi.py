@@ -87,11 +87,13 @@ Body.
             self.assertGreater(decision["signals"]["proximity"], 0)
             self.assertEqual(decision["why"]["graphDistance"], 1)
 
-    def test_record_prompt_writes_to_project_session_folder(self) -> None:
+    def test_record_prompt_stores_marker_without_writing_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             vault = base / "Vault"
             target = base / "TargetProject"
+            store = base / "store"
+            audit = base / "hook-audit.log"
             config = base / "config.json"
             vault.mkdir()
             target.mkdir()
@@ -100,6 +102,8 @@ Body.
                     {
                         "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
                         "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                        "hookAuditLog": str(audit),
                     }
                 ),
                 encoding="utf-8",
@@ -124,9 +128,237 @@ Body.
                 text=True,
             )
 
-            prompt_note = vault / "Alpha Project" / "session2026-06-19" / "prompts.md"
-            self.assertTrue(prompt_note.exists())
-            self.assertIn("Please update the parser.", prompt_note.read_text(encoding="utf-8"))
+            self.assertFalse((vault / "Alpha Project" / "session2026-06-19").exists())
+            markers = (store / "prompt-markers.jsonl").read_text(encoding="utf-8")
+            self.assertIn("Please update the parser.", markers)
+            self.assertTrue(audit.exists())
+            self.assertIn("record-prompt stored turn marker", audit.read_text(encoding="utf-8"))
+
+    def test_replay_session_routes_completed_turn_outcomes_and_skips_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            audit = base / "hook-audit.log"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                        "hookAuditLog": str(audit),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            session_events = [
+                {
+                    "timestamp": "2026-06-19T10:00:00Z",
+                    "type": "session_meta",
+                    "payload": {"cwd": str(target)},
+                },
+                {
+                    "timestamp": "2026-06-19T10:01:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-architecture",
+                        "last_agent_message": "Implemented M2-M7 and M9-M11 MAPS phase skills, updated scaffold output, and validated the maps-data resource references.",
+                    },
+                },
+                {
+                    "timestamp": "2026-06-19T10:02:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-configuration",
+                        "last_agent_message": "Updated hooks.json and config.toml guidance so the Stop hook records Obsidianify turn outcomes.",
+                    },
+                },
+                {
+                    "timestamp": "2026-06-19T10:03:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-design",
+                        "last_agent_message": "Fixed the voice profile page layout and improved the profile UI.",
+                    },
+                },
+                {
+                    "timestamp": "2026-06-19T10:04:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-noise",
+                        "last_agent_message": "vik-handoff-check: unchanged\nreid-handoff-check: unchanged\nliz-handoff-check: unchanged",
+                    },
+                },
+            ]
+            session_log.write_text("\n".join(json.dumps(event) for event in session_events) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            session_dir = vault / "Alpha Project" / "session2026-06-19"
+            architecture = (session_dir / "architecture.md").read_text(encoding="utf-8")
+            configuration = (session_dir / "configuration.md").read_text(encoding="utf-8")
+            design = (session_dir / "design.md").read_text(encoding="utf-8")
+            self.assertIn("M2-M7 and M9-M11 MAPS phase skills", architecture)
+            self.assertIn("- Source: completed turn", architecture)
+            self.assertIn("Stop hook records Obsidianify turn outcomes", configuration)
+            self.assertIn("voice profile page layout", design)
+            self.assertNotIn("handoff-check: unchanged", "\n".join(path.read_text(encoding="utf-8") for path in session_dir.glob("*.md")))
+            self.assertIn("replay-session wrote 3 note(s)", audit.read_text(encoding="utf-8"))
+
+    def test_completed_turn_dedupe_prevents_duplicate_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-architecture",
+                    "last_agent_message": "Validated the MAPS scaffold and implemented the post-turn Obsidianify architecture writer.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            command = [
+                sys.executable,
+                str(ROOT / "scripts" / "omi.py"),
+                "replay-session",
+                "--config",
+                str(config),
+                "--target",
+                str(target),
+                "--agent",
+                "codex",
+                "--session-date",
+                "2026-06-19",
+                "--session-log",
+                str(session_log),
+            ]
+            subprocess.run(command, check=True, text=True)
+            subprocess.run(command, check=True, text=True)
+
+            architecture = vault / "Alpha Project" / "session2026-06-19" / "architecture.md"
+            self.assertEqual(architecture.read_text(encoding="utf-8").count("post-turn Obsidianify architecture writer"), 1)
+
+    def test_packet_includes_sidecar_memory_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            vault.mkdir()
+            target.mkdir()
+            (vault / "Alpha Project.md").write_text("Alpha context note.", encoding="utf-8")
+
+            omi.sync_vaults([vault], store)
+            omi.rank_graph(store, "Alpha", "")
+
+            sidecar_path = omi.sidecar_memory_path(target)
+            sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+            sidecar_path.write_text(
+                json.dumps(
+                    {"entries": [{"text": "Ship on Fridays only.", "addedAt": "2026-07-03", "addedBy": "scott"}]}
+                ),
+                encoding="utf-8",
+            )
+
+            packet_path = omi.generate_packet(store, "Alpha", "", target, "claude", 20)
+            packet = packet_path.read_text(encoding="utf-8")
+
+            self.assertIn("## Sidecar Memory", packet)
+            self.assertIn("Ship on Fridays only.", packet)
+            status = json.loads((target / ".obsidian-memory" / "STATUS.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["sidecarCount"], 1)
+
+    def test_packet_omits_sidecar_section_when_file_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            vault.mkdir()
+            target.mkdir()
+            (vault / "Alpha Project.md").write_text("Alpha context note.", encoding="utf-8")
+
+            omi.sync_vaults([vault], store)
+            omi.rank_graph(store, "Alpha", "")
+
+            packet_path = omi.generate_packet(store, "Alpha", "", target, "claude", 20)
+            packet = packet_path.read_text(encoding="utf-8")
+
+            self.assertNotIn("Sidecar Memory", packet)
+            status = json.loads((target / ".obsidian-memory" / "STATUS.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["sidecarCount"], 0)
+
+    def test_load_sidecar_entries_ignores_malformed_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sidecar_memory.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            self.assertEqual(omi.load_sidecar_entries(path), [])
+
+    def test_dot_target_resolves_to_configured_project_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            project = base / "Project"
+            nested = project / "subdir"
+            other = base / "Other"
+            project.mkdir()
+            nested.mkdir()
+            other.mkdir()
+            config = {"projects": {"Alpha": {"path": str(project)}}}
+
+            old_cwd = Path.cwd()
+            try:
+                import os
+
+                os.chdir(nested)
+                self.assertEqual(omi.resolve_hook_target(Path("."), config), project.resolve())
+            finally:
+                os.chdir(old_cwd)
 
 
 if __name__ == "__main__":

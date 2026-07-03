@@ -20,6 +20,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"PYTHON\" \"OMI_SCRIPT\" record-turn --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"claude\""
+          }
+        ]
+      }
     ]
   }
 }

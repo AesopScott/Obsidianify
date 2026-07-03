@@ -23,7 +23,7 @@ Use Obsidian as the human knowledge graph, then build a local-first graph intell
 3. Select project-proximate memory at session start.
 4. Generate a compact context packet.
 5. Inject through Codex and Claude hooks.
-6. Record prompt submissions into per-project Obsidian session notes.
+6. Record prompt-submit markers, then classify completed turn outcomes and record valuable assistant/build results into per-project typed Obsidian session notes.
 
 ## Core Principle
 
@@ -48,7 +48,7 @@ Graphify for Obsidian.
 - Cowork manual packet adapter.
 - Generated Markdown packet.
 - Status file for verification.
-- Prompt log notes at `<vault>/<project>/sessionYYYY-MM-DD/prompts.md`.
+- Completed-turn notes at `<vault>/<project>/sessionYYYY-MM-DD/{architecture,configuration,design,other}.md`.
 
 ## Future
 

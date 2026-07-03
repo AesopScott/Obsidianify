@@ -18,7 +18,18 @@
           {
             "type": "command",
             "command": "\"PYTHON\" \"OMI_SCRIPT\" record-prompt --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"codex\"",
-            "statusMessage": "Recording Obsidianify prompt note"
+            "statusMessage": "Recording Obsidianify turn marker"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"PYTHON\" \"OMI_SCRIPT\" record-turn --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"codex\"",
+            "statusMessage": "Recording Obsidianify turn outcome"
           }
         ]
       }

@@ -63,7 +63,18 @@ def install_codex(target: Path, vaults: list[Path], project: str, task: str) -> 
                         {
                             "type": "command",
                             "command": prompt_command(target, vaults, project, "codex"),
-                            "statusMessage": "Recording Obsidianify prompt note",
+                            "statusMessage": "Recording Obsidianify turn marker",
+                        }
+                    ]
+                }
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": turn_command(target, vaults, project, "codex"),
+                            "statusMessage": "Recording Obsidianify turn outcome",
                         }
                     ]
                 }
@@ -120,6 +131,16 @@ def install_claude(target: Path, vaults: list[Path], project: str, task: str) ->
                 {
                     "type": "command",
                     "command": prompt_command(target, vaults, project, "claude"),
+                }
+            ]
+        }
+    ]
+    settings["hooks"]["Stop"] = [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": turn_command(target, vaults, project, "claude"),
                 }
             ]
         }
@@ -186,6 +207,16 @@ def command(target: Path, vaults: list[Path], project: str, task: str, agent: st
 def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
     return (
         f'"{sys.executable}" "{OMI}" record-prompt '
+        f'--vault "{vaults[0]}" '
+        f'--project "{project}" '
+        f'--target "{target}" '
+        f'--agent "{agent}"'
+    )
+
+
+def turn_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
+    return (
+        f'"{sys.executable}" "{OMI}" record-turn '
         f'--vault "{vaults[0]}" '
         f'--project "{project}" '
         f'--target "{target}" '
