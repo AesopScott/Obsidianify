@@ -69,12 +69,12 @@ def install_codex_global() -> None:
     add_user_prompt_hook(
         hooks,
         command=global_prompt_command("codex"),
-        status_message="Recording Obsidianify turn marker",
+        status_message="Recording Obsidianify prompt marker",
     )
     add_stop_hook(
         hooks,
         command=global_turn_command("codex"),
-        status_message="Recording Obsidianify turn outcome",
+        status_message="Recording Obsidianify turn memory",
     )
     write_json(hooks_path, hooks)
     append_block(
@@ -93,6 +93,10 @@ Then read:
 
 Answer from that packet only. Do not use Graphify or inspect other files unless the user asks you to.
 
+Obsidianify records prompt markers locally and classifies the latest prompt plus completed assistant outcome before writing turn-memory notes. Notes should contain distilled prompt memory and assistant outcome summaries, not raw full prompt transcripts unless the user explicitly asks for transcript capture.
+
+Project-specific note routing comes from `~/.obsidianify/config.json`, including `projects.<name>.vaultPath` and `projects.<name>.writeRoot`.
+
 If the packet is missing, say: "No Obsidianify session packet is available in this project yet."
 """.strip(),
     )
@@ -103,9 +107,9 @@ def install_claude_global() -> None:
     claude_home.mkdir(parents=True, exist_ok=True)
     settings_path = claude_home / "settings.json"
     settings = read_json_object(settings_path)
-    add_session_start_hook(settings, command=global_command("claude"))
-    add_user_prompt_hook(settings, command=global_prompt_command("claude"))
-    add_stop_hook(settings, command=global_turn_command("claude"))
+    add_session_start_hook(settings, command=global_command("claude"), status_message="Refreshing Obsidianify memory packet")
+    add_user_prompt_hook(settings, command=global_prompt_command("claude"), status_message="Recording Obsidianify prompt marker")
+    add_stop_hook(settings, command=global_turn_command("claude"), status_message="Recording Obsidianify turn memory")
     write_json(settings_path, settings)
     append_block(
         claude_home / "CLAUDE.md",
@@ -122,6 +126,10 @@ Then read:
 `.obsidian-memory/CLAUDE_SESSION_CONTEXT.md`
 
 Answer from that packet only. Do not inspect other files unless the user asks you to.
+
+Obsidianify records prompt markers locally and classifies the latest prompt plus completed assistant outcome before writing turn-memory notes. Notes should contain distilled prompt memory and assistant outcome summaries, not raw full prompt transcripts unless the user explicitly asks for transcript capture.
+
+Project-specific note routing comes from `~/.obsidianify/config.json`, including `projects.<name>.vaultPath` and `projects.<name>.writeRoot`.
 
 If the packet is missing, say: "No Obsidianify session packet is available in this project yet."
 """.strip(),
