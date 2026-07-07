@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -225,12 +224,7 @@ def global_turn_command(agent: str) -> str:
 
 
 def hook_command(command: str) -> str:
-    if sys.platform != "win32":
-        return command
-    parts = re.findall(r'"([^"]+)"|(\S+)', command)
-    values = [quoted or bare for quoted, bare in parts]
-    quoted_values = " ".join("'" + value.replace("'", "''") + "'" for value in values)
-    return f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& {quoted_values}"'
+    return command
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
