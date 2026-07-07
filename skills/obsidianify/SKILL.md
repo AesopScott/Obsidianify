@@ -20,7 +20,10 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 
 - `SessionStart` hooks refresh the packet.
 - `UserPromptSubmit` hooks record lightweight turn markers.
-- `Stop` hooks classify completed turn outcomes and write valuable entries into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
+- `Stop` hooks classify the latest prompt plus completed turn outcome and write valuable entries into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
+- Turn notes include distilled prompt memory and assistant outcome summaries; raw full prompts stay in the local marker store unless the user explicitly asks for transcript capture.
+- A project config can set `vaultPath` to choose the recording vault for that project: `projects.<name>.vaultPath`.
+- A project config can set `writeRoot` to write turn notes under a project-specific root instead: `projects.<name>.writeRoot/sessionYYYY-MM-DD/`.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.
 - The first user prompt can force verification.
 

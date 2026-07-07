@@ -241,7 +241,7 @@ When a session starts in a project, Obsidianify writes:
 <current-project>/.obsidian-memory/STATUS.json
 ```
 
-On prompt submission, Obsidianify records a lightweight marker for correlation. After the turn finishes, the post-turn hook reads the completed session outcome, skips low-value or noisy turns, and writes valuable assistant/build results to one of four bucket notes:
+On prompt submission, Obsidianify records a lightweight marker for correlation. After the turn finishes, the post-turn hook reads the latest prompt marker and completed session outcome together, skips low-value or noisy turns, and writes valuable prompt intent or assistant/build results to one of four bucket notes:
 
 ```text
 <vault>/<project-name>/sessionYYYY-MM-DD/architecture.md
@@ -268,6 +268,34 @@ Set `sessionLogVault` in `~/.obsidianify/config.json` to choose a different prom
 ```json
 {
   "sessionLogVault": "G:\\My Drive\\Obsidian\\SessionLogs"
+}
+```
+
+Set `projects.<name>.vaultPath` to choose a different prompt-log vault for one project:
+
+```json
+{
+  "projects": {
+    "Alpha Project": {
+      "path": "C:\\path\\to\\project",
+      "vaultPath": "G:\\My Drive\\Obsidian\\Client Vault"
+    }
+  }
+}
+```
+
+Turn notes store distilled prompt memory plus an assistant outcome summary. Full prompt text remains in the local marker store by default, unless the prompt explicitly asks for transcript capture.
+
+Set `projects.<name>.writeRoot` to write completed-turn notes directly under a project-specific Obsidian root instead of `<vaultPath>/<project-name>/`:
+
+```json
+{
+  "projects": {
+    "Alpha Project": {
+      "path": "C:\\path\\to\\project",
+      "writeRoot": "G:\\My Drive\\Obsidian\\Alpha Project"
+    }
+  }
 }
 ```
 

@@ -134,6 +134,154 @@ Body.
             self.assertTrue(audit.exists())
             self.assertIn("record-prompt stored turn marker", audit.read_text(encoding="utf-8"))
 
+    def test_prompt_memory_intent_writes_short_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "record-prompt",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                ],
+                input=json.dumps(
+                    {
+                        "prompt": "Remember this decision: the intranet project should route turn memory under projects.intranet.writeRoot."
+                    }
+                ),
+                check=True,
+                text=True,
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-short",
+                    "last_agent_message": "Done.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            note = vault / "Alpha Project" / "session2026-06-19" / "architecture.md"
+            text = note.read_text(encoding="utf-8")
+            self.assertIn("### Prompt Memory", text)
+            self.assertIn("Remember this decision", text)
+            self.assertIn("projects.intranet.writeRoot", text)
+            self.assertIn("### Assistant Outcome", text)
+            self.assertIn("Done.", text)
+            self.assertIn("- Trigger Prompt Hash:", text)
+            self.assertIn("- Reason: explicit user memory intent", text)
+
+    def test_low_value_prompt_and_outcome_skip_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "record-prompt",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                ],
+                input=json.dumps({"prompt": "thanks"}),
+                check=True,
+                text=True,
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {"type": "task_complete", "turn_id": "turn-low", "last_agent_message": "ok"},
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            self.assertFalse((vault / "Alpha Project" / "session2026-06-19").exists())
+
     def test_replay_session_routes_completed_turn_outcomes_and_skips_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -231,6 +379,119 @@ Body.
             self.assertIn("voice profile page layout", design)
             self.assertNotIn("handoff-check: unchanged", "\n".join(path.read_text(encoding="utf-8") for path in session_dir.glob("*.md")))
             self.assertIn("replay-session wrote 3 note(s)", audit.read_text(encoding="utf-8"))
+
+    def test_intranet_project_write_root_overrides_default_turn_note_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            write_root = base / "Scott" / "intranet"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"intranet": {"path": str(target), "writeRoot": str(write_root)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-architecture",
+                    "last_agent_message": "Implemented the Obsidianify architecture writer with a per-project write root.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            architecture = write_root / "session2026-06-19" / "architecture.md"
+            self.assertIn("per-project write root", architecture.read_text(encoding="utf-8"))
+            self.assertFalse((vault / "intranet").exists())
+
+    def test_project_vault_path_overrides_default_recording_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            project_vault = base / "ProjectVault"
+            target = base / "TargetProject"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            project_vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target), "vaultPath": str(project_vault)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-configuration",
+                    "last_agent_message": "Updated the Obsidianify configuration writer to support per-project vault paths.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            configuration = project_vault / "Alpha Project" / "session2026-06-19" / "configuration.md"
+            self.assertIn("per-project vault paths", configuration.read_text(encoding="utf-8"))
+            self.assertFalse((vault / "Alpha Project").exists())
 
     def test_completed_turn_dedupe_prevents_duplicate_notes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

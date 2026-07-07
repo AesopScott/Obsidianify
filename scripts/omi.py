@@ -175,6 +175,25 @@ OUTCOME_TERMS = {
     "validated",
     "verified",
 }
+MEMORY_INTENT_PHRASES = {
+    "remember",
+    "memorize",
+    "save this",
+    "note this",
+    "write this down",
+    "record this",
+    "store this",
+    "keep this",
+}
+PREFERENCE_TERMS = {
+    "always",
+    "default",
+    "defaults",
+    "prefer",
+    "preference",
+    "remember",
+    "should",
+}
 
 
 def main() -> int:
@@ -777,7 +796,9 @@ def write_turn_note(
     turn: dict[str, str],
 ) -> Path | None:
     outcome_text = turn.get("outcome", "").strip()
-    classification = classify_turn_write(outcome_text)
+    marker = latest_prompt_marker(config, project_name, resolved_target)
+    prompt_text = marker.get("prompt", "").strip()
+    classification = classify_turn_memory(prompt_text, outcome_text)
     turn_key = turn_hash(session_log, turn)
     if processed_turn(config, turn_key):
         write_hook_audit(config, f"record-turn skipped: duplicate turn {turn_key}", agent, project_name, resolved_target, None)
@@ -794,11 +815,10 @@ def write_turn_note(
         )
         return None
     date_part = session_date or datetime.now().strftime("%Y-%m-%d")
-    out_dir = vault_path / safe_obsidian_segment(project_name) / f"session{date_part}"
+    out_dir = resolve_turn_note_root(config, vault_path, project_name, resolved_target) / f"session{date_part}"
     out_dir.mkdir(parents=True, exist_ok=True)
     info_type = classification["information_type"]
     out_path = out_dir / INFORMATION_BUCKET_FILES[info_type]
-    marker = latest_prompt_marker(config, project_name, resolved_target)
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     entry = [
         f"## {timestamp}",
@@ -814,7 +834,11 @@ def write_turn_note(
         f"- Reason: {classification['reason']}",
         f"- Trigger Prompt Hash: {marker.get('promptHash', '')}",
         "",
-        "### Outcome",
+        "### Prompt Memory",
+        "",
+        summarize_prompt_text(prompt_text),
+        "",
+        "### Assistant Outcome",
         "",
         summarize_outcome_text(outcome_text),
         "",
@@ -827,28 +851,53 @@ def write_turn_note(
 
 
 def classify_prompt_write(prompt_text: str) -> dict[str, Any]:
-    return classify_turn_write(prompt_text)
+    return classify_turn_memory(prompt_text, "")
 
 
 def classify_turn_write(text: str) -> dict[str, Any]:
-    normalized = re.sub(r"\s+", " ", text).strip()
-    lowered = normalized.lower()
+    return classify_turn_memory("", text)
+
+
+def classify_turn_memory(prompt_text: str, outcome_text: str) -> dict[str, Any]:
+    prompt_normalized = re.sub(r"\s+", " ", prompt_text).strip()
+    outcome_normalized = re.sub(r"\s+", " ", outcome_text).strip()
+    combined = " ".join(part for part in (prompt_normalized, outcome_normalized) if part).strip()
+    lowered = combined.lower()
+    prompt_lowered = prompt_normalized.lower()
+    outcome_lowered = outcome_normalized.lower()
     token_set = set(re.findall(r"[a-z0-9_+-]+", lowered))
+    prompt_tokens = set(re.findall(r"[a-z0-9_+-]+", prompt_lowered))
+    outcome_tokens = set(re.findall(r"[a-z0-9_+-]+", outcome_lowered))
     if not lowered:
         return {"valuable": False, "information_type": "Other", "reason": "empty"}
-    if lowered in LOW_VALUE_PROMPTS:
+    if prompt_lowered in LOW_VALUE_PROMPTS and (not outcome_lowered or outcome_lowered in LOW_VALUE_PROMPTS):
         return {"valuable": False, "information_type": "Other", "reason": "low-value acknowledgement"}
-    if is_noise_payload(lowered, token_set):
+    if is_noise_payload(outcome_lowered, outcome_tokens) or (
+        is_noise_payload(prompt_lowered, prompt_tokens) and not has_explicit_memory_intent(prompt_lowered)
+    ):
         return {"valuable": False, "information_type": "Other", "reason": "routine automation/delegation noise"}
     scores = information_scores(lowered, token_set)
+    if prompt_tokens & PREFERENCE_TERMS and any(term in lowered for term in ("default", "prefer", "always", "should")):
+        scores["Configuration"] += 1
+    explicit_memory = has_explicit_memory_intent(prompt_lowered)
     signal_terms = token_set & (VALUABLE_TERMS | OUTCOME_TERMS | ARCHITECTURE_TERMS | CONFIGURATION_TERMS | DESIGN_TERMS)
-    valuable = bool(signal_terms) or max(scores.values(), default=0) >= 2
+    valuable = explicit_memory or bool(signal_terms) or max(scores.values(), default=0) >= 2
     if not valuable:
         return {"valuable": False, "information_type": "Other", "reason": "no durable signal"}
     info_type = max(scores, key=scores.get)
     if scores[info_type] <= 0:
         info_type = "Other"
-    return {"valuable": True, "information_type": info_type, "reason": "durable outcome signal"}
+    if explicit_memory:
+        reason = "explicit user memory intent"
+    elif outcome_tokens & OUTCOME_TERMS:
+        reason = "durable implementation outcome"
+    else:
+        reason = "durable prompt/outcome signal"
+    return {"valuable": True, "information_type": info_type, "reason": reason}
+
+
+def has_explicit_memory_intent(lowered_prompt: str) -> bool:
+    return any(phrase in lowered_prompt for phrase in MEMORY_INTENT_PHRASES)
 
 
 def information_scores(lowered: str, token_set: set[str]) -> dict[str, int]:
@@ -901,7 +950,7 @@ def resolve_recording_context(
         project_name = detect_project_name(resolved_target, config)
     else:
         project_name = resolved_target.name
-    return config, project_name, resolved_target, resolve_session_log_vault(config, vault)
+    return config, project_name, resolved_target, resolve_session_log_vault(config, vault, project_name, resolved_target)
 
 
 def session_log_root(agent: str) -> Path | None:
@@ -1025,6 +1074,32 @@ def summarize_outcome_text(text: str, limit: int = 1800) -> str:
     return cleaned[:limit].rstrip() + "\n\n[Outcome truncated by Obsidianify.]"
 
 
+def summarize_prompt_text(text: str, limit: int = 700) -> str:
+    cleaned = re.sub(r"\n{3,}", "\n\n", text.strip())
+    if not cleaned:
+        return "[No prompt marker found.]"
+    if wants_full_transcript_capture(cleaned):
+        return summarize_outcome_text(cleaned, 1800).replace(
+            "[Outcome truncated by Obsidianify.]",
+            "[Prompt transcript truncated by Obsidianify.]",
+        )
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    memory_lines = [
+        line
+        for line in lines
+        if any(term in line.lower() for term in MEMORY_INTENT_PHRASES | VALUABLE_TERMS | CONFIGURATION_TERMS | ARCHITECTURE_TERMS | DESIGN_TERMS)
+    ]
+    distilled = "\n".join(memory_lines[:6]) if memory_lines else cleaned
+    if len(distilled) <= limit:
+        return distilled
+    return distilled[:limit].rstrip() + "\n\n[Prompt excerpt truncated by Obsidianify.]"
+
+
+def wants_full_transcript_capture(text: str) -> bool:
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in ("full transcript", "verbatim transcript", "capture the full prompt"))
+
+
 def prompt_marker_path(config: dict[str, Any]) -> Path:
     store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
     return store / "prompt-markers.jsonl"
@@ -1111,14 +1186,53 @@ def resolve_hook_target(target: Path, config: dict[str, Any]) -> Path:
     return cwd
 
 
-def resolve_session_log_vault(config: dict[str, Any], vault: Path | None) -> Path | None:
+def resolve_session_log_vault(
+    config: dict[str, Any],
+    vault: Path | None,
+    project_name: str = "",
+    target: Path | None = None,
+) -> Path | None:
     if vault:
         return vault.resolve()
+    if project_name and target is not None:
+        project = project_config(config, project_name, target)
+        if project:
+            for key in ("vaultPath", "sessionLogVault", "recordingVault"):
+                configured = project.get(key)
+                if configured:
+                    return Path(str(configured)).expanduser().resolve()
     configured = config.get("sessionLogVault")
     if configured:
         return Path(configured).resolve()
     vaults = config_vaults(config) if config else []
     return vaults[0].resolve() if vaults else None
+
+
+def resolve_turn_note_root(config: dict[str, Any], vault_path: Path, project_name: str, target: Path) -> Path:
+    project = project_config(config, project_name, target)
+    if project:
+        for key in ("writeRoot", "sessionWriteRoot", "turnNoteRoot"):
+            configured = project.get(key)
+            if configured:
+                return Path(str(configured)).expanduser().resolve()
+    return vault_path / safe_obsidian_segment(project_name)
+
+
+def project_config(config: dict[str, Any], project_name: str, target: Path) -> dict[str, Any] | None:
+    projects = config.get("projects", {})
+    if not isinstance(projects, dict):
+        return None
+    exact = projects.get(project_name)
+    if isinstance(exact, dict):
+        return exact
+    resolved_target = target.resolve()
+    for data in projects.values():
+        if not isinstance(data, dict) or not data.get("path"):
+            continue
+        configured_path = Path(str(data["path"])).expanduser().resolve()
+        if resolved_target == configured_path or configured_path in resolved_target.parents:
+            return data
+    return None
 
 
 def write_hook_audit(
