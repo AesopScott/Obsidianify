@@ -15,6 +15,16 @@ import omi  # noqa: E402
 
 
 class OmiTests(unittest.TestCase):
+    def test_cli_reports_version(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "omi.py"), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertIn("Obsidianify 0.4.0", result.stdout)
+
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

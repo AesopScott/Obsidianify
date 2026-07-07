@@ -1,5 +1,7 @@
 # Obsidianify
 
+Current version: 0.4.0
+
 Obsidianify is Graphify-style graph intelligence for Obsidian, with agent memory injection.
 
 It turns an entire Obsidian vault into ranked session memory for coding agents.

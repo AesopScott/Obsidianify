@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 
+ROOT = Path(__file__).resolve().parents[1]
+OBSIDIANIFY_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]]+)\]\]")
 TAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_/-]+)")
 INFORMATION_BUCKET_FILES = {
@@ -198,6 +200,7 @@ PREFERENCE_TERMS = {
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", action="version", version=f"Obsidianify {OBSIDIANIFY_VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sync = sub.add_parser("sync", help="Read an Obsidian vault and write graph JSON.")
@@ -614,6 +617,7 @@ def generate_packet(
         f"# {agent.title()} Session Context",
         "",
         "Source: ranked Obsidian knowledge graph",
+        f"Obsidianify-Version: {OBSIDIANIFY_VERSION}",
         f"Generated: {utc_now()}",
         f"Project: {project}",
         f"Task: {task or 'general project session'}",
@@ -670,6 +674,7 @@ def generate_packet(
         status_path,
         {
             "status": "loaded",
+            "obsidianifyVersion": OBSIDIANIFY_VERSION,
             "agent": agent,
             "project": project,
             "task": task,

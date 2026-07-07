@@ -12,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 OMI = ROOT / "scripts" / "omi.py"
 OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
+OBSIDIANIFY_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def main() -> int:
@@ -39,6 +40,7 @@ def main() -> int:
             "defaultTask": config.get("defaultTask", args.default_task),
             "hookAuditLog": str(OBSIDIANIFY_HOME / "hook-audit.log"),
             "repo": str(ROOT),
+            "version": OBSIDIANIFY_VERSION,
         }
     )
     write_json(OBSIDIANIFY_HOME / "config.json", config)
@@ -51,7 +53,7 @@ def main() -> int:
         else:
             install_cowork_global()
 
-    print(f"Installed Obsidianify globally for: {', '.join(args.agent)}")
+    print(f"Installed Obsidianify {OBSIDIANIFY_VERSION} globally for: {', '.join(args.agent)}")
     print(f"Config: {OBSIDIANIFY_HOME / 'config.json'}")
     return 0
 
@@ -64,24 +66,26 @@ def install_codex_global() -> None:
     add_session_start_hook(
         hooks,
         command=global_command("codex"),
-        status_message="Refreshing Obsidianify memory packet",
+        status_message=f"Refreshing Obsidianify {OBSIDIANIFY_VERSION} memory packet",
     )
     add_user_prompt_hook(
         hooks,
         command=global_prompt_command("codex"),
-        status_message="Recording Obsidianify prompt marker",
+        status_message=f"Recording Obsidianify {OBSIDIANIFY_VERSION} prompt marker",
     )
     add_stop_hook(
         hooks,
         command=global_turn_command("codex"),
-        status_message="Recording Obsidianify turn memory",
+        status_message=f"Recording Obsidianify {OBSIDIANIFY_VERSION} turn memory",
     )
     write_json(hooks_path, hooks)
     append_block(
         codex_home / "AGENTS.md",
         "Obsidianify",
-        """
+        f"""
 ## Obsidianify
+
+Version: {OBSIDIANIFY_VERSION}
 
 When asked what Obsidian graph memory is loaded or injected, first read:
 
@@ -107,15 +111,17 @@ def install_claude_global() -> None:
     claude_home.mkdir(parents=True, exist_ok=True)
     settings_path = claude_home / "settings.json"
     settings = read_json_object(settings_path)
-    add_session_start_hook(settings, command=global_command("claude"), status_message="Refreshing Obsidianify memory packet")
-    add_user_prompt_hook(settings, command=global_prompt_command("claude"), status_message="Recording Obsidianify prompt marker")
-    add_stop_hook(settings, command=global_turn_command("claude"), status_message="Recording Obsidianify turn memory")
+    add_session_start_hook(settings, command=global_command("claude"), status_message=f"Refreshing Obsidianify {OBSIDIANIFY_VERSION} memory packet")
+    add_user_prompt_hook(settings, command=global_prompt_command("claude"), status_message=f"Recording Obsidianify {OBSIDIANIFY_VERSION} prompt marker")
+    add_stop_hook(settings, command=global_turn_command("claude"), status_message=f"Recording Obsidianify {OBSIDIANIFY_VERSION} turn memory")
     write_json(settings_path, settings)
     append_block(
         claude_home / "CLAUDE.md",
         "Obsidianify",
-        """
+        f"""
 ## Obsidianify
+
+Version: {OBSIDIANIFY_VERSION}
 
 When asked what Obsidian graph memory is loaded or injected, first read:
 
@@ -139,8 +145,10 @@ If the packet is missing, say: "No Obsidianify session packet is available in th
 def install_cowork_global() -> None:
     note_path = OBSIDIANIFY_HOME / "COWORK.md"
     note_path.write_text(
-        """
+        f"""
 # Obsidianify Cowork Workaround
+
+Version: {OBSIDIANIFY_VERSION}
 
 Cowork does not appear to run Claude Code's global `~/.claude/settings.json` hooks.
 
