@@ -27,16 +27,20 @@ def main() -> int:
             raise SystemExit(f"Vault not found: {vault}")
 
     OBSIDIANIFY_HOME.mkdir(parents=True, exist_ok=True)
-    config = {
-        "vaults": [
-            {"name": vault.name, "path": str(vault), "enabled": True}
-            for vault in vaults
-        ],
-        "store": str(OBSIDIANIFY_HOME / "store"),
-        "defaultTask": args.default_task,
-        "hookAuditLog": str(OBSIDIANIFY_HOME / "hook-audit.log"),
-        "repo": str(ROOT),
-    }
+    config_path = OBSIDIANIFY_HOME / "config.json"
+    config = read_json_object(config_path)
+    config.update(
+        {
+            "vaults": [
+                {"name": vault.name, "path": str(vault), "enabled": True}
+                for vault in vaults
+            ],
+            "store": str(OBSIDIANIFY_HOME / "store"),
+            "defaultTask": config.get("defaultTask", args.default_task),
+            "hookAuditLog": str(OBSIDIANIFY_HOME / "hook-audit.log"),
+            "repo": str(ROOT),
+        }
+    )
     write_json(OBSIDIANIFY_HOME / "config.json", config)
 
     for agent in args.agent:
@@ -158,11 +162,7 @@ def add_session_start_hook(settings: dict[str, Any], command: str, status_messag
     if status_message:
         hook_entry["statusMessage"] = status_message
     new_group = {"matcher": "startup|resume", "hooks": [hook_entry]}
-    session_hooks[:] = [
-        group
-        for group in session_hooks
-        if "Obsidianify" not in json.dumps(group) and str(OMI) not in json.dumps(group)
-    ]
+    remove_obsidianify_hooks(session_hooks)
     session_hooks.append(new_group)
 
 
@@ -173,11 +173,7 @@ def add_user_prompt_hook(settings: dict[str, Any], command: str, status_message:
     if status_message:
         hook_entry["statusMessage"] = status_message
     new_group = {"hooks": [hook_entry]}
-    prompt_hooks[:] = [
-        group
-        for group in prompt_hooks
-        if "Obsidianify" not in json.dumps(group) and str(OMI) not in json.dumps(group)
-    ]
+    remove_obsidianify_hooks(prompt_hooks)
     prompt_hooks.append(new_group)
 
 
@@ -188,12 +184,26 @@ def add_stop_hook(settings: dict[str, Any], command: str, status_message: str | 
     if status_message:
         hook_entry["statusMessage"] = status_message
     new_group = {"hooks": [hook_entry]}
-    stop_hooks[:] = [
-        group
-        for group in stop_hooks
-        if "Obsidianify" not in json.dumps(group) and str(OMI) not in json.dumps(group)
-    ]
+    remove_obsidianify_hooks(stop_hooks)
     stop_hooks.append(new_group)
+
+
+def remove_obsidianify_hooks(groups: list[dict[str, Any]]) -> None:
+    kept_groups = []
+    for group in groups:
+        hooks = group.get("hooks")
+        if not isinstance(hooks, list):
+            kept_groups.append(group)
+            continue
+        filtered_hooks = [
+            hook
+            for hook in hooks
+            if "Obsidianify" not in json.dumps(hook) and str(OMI) not in json.dumps(hook)
+        ]
+        if filtered_hooks:
+            group["hooks"] = filtered_hooks
+            kept_groups.append(group)
+    groups[:] = kept_groups
 
 
 def global_command(agent: str) -> str:
