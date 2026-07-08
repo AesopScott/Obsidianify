@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -250,6 +251,8 @@ def global_turn_command(agent: str) -> str:
 
 
 def hook_command(command: str) -> str:
+    if os.name == "nt":
+        return f"& {command}"
     return command
 
 

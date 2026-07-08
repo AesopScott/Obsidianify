@@ -5,16 +5,35 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import install  # noqa: E402
+import install_global  # noqa: E402
 import omi  # noqa: E402
 
 
 class OmiTests(unittest.TestCase):
+    def test_windows_hook_commands_use_powershell_call_operator(self) -> None:
+        with mock.patch.object(install.os, "name", "nt"):
+            self.assertTrue(install.hook_command('"C:\\Python\\python.exe" script.py').startswith("& "))
+
+        with mock.patch.object(install_global.os, "name", "nt"):
+            self.assertTrue(install_global.hook_command('"C:\\Python\\python.exe" script.py').startswith("& "))
+
+    def test_non_windows_hook_commands_are_unchanged(self) -> None:
+        command = '"/usr/bin/python3" script.py'
+
+        with mock.patch.object(install.os, "name", "posix"):
+            self.assertEqual(install.hook_command(command), command)
+
+        with mock.patch.object(install_global.os, "name", "posix"):
+            self.assertEqual(install_global.hook_command(command), command)
+
     def test_cli_reports_version(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "omi.py"), "--version"],
@@ -23,7 +42,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.1", result.stdout)
+        self.assertIn("Obsidianify 0.4.2", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

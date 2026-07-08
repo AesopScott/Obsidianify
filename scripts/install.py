@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -193,7 +194,7 @@ def run_refresh(target: Path, vaults: list[Path], project: str, task: str, agent
 
 
 def command(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> str:
-    return (
+    return hook_command(
         f'"{sys.executable}" "{OMI}" refresh '
         f'{vault_command_args(vaults)} '
         f'--store "{ROOT / ".omi-store"}" '
@@ -206,7 +207,7 @@ def command(target: Path, vaults: list[Path], project: str, task: str, agent: st
 
 
 def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
-    return (
+    return hook_command(
         f'"{sys.executable}" "{OMI}" record-prompt '
         f'--vault "{vaults[0]}" '
         f'--project "{project}" '
@@ -216,7 +217,7 @@ def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -
 
 
 def turn_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
-    return (
+    return hook_command(
         f'"{sys.executable}" "{OMI}" record-turn '
         f'--vault "{vaults[0]}" '
         f'--project "{project}" '
@@ -234,6 +235,12 @@ def vault_args(vaults: list[Path]) -> list[str]:
 
 def vault_command_args(vaults: list[Path]) -> str:
     return " ".join(f'--vault "{vault}"' for vault in vaults)
+
+
+def hook_command(command_text: str) -> str:
+    if os.name == "nt":
+        return f"& {command_text}"
+    return command_text
 
 
 def append_block(path: Path, label: str, content: str) -> None:
