@@ -33,6 +33,7 @@ def main() -> int:
 def install_agent(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> None:
     target_memory = target / ".obsidian-memory"
     target_memory.mkdir(parents=True, exist_ok=True)
+    ensure_gitignore_entry(target, ".obsidian-memory/")
     if agent == "codex":
         install_codex(target, vaults, project, task)
     else:
@@ -246,6 +247,16 @@ def append_block(path: Path, label: str, content: str) -> None:
         path.write_text(before.rstrip() + block + after.lstrip(), encoding="utf-8")
     else:
         path.write_text(existing.rstrip() + block, encoding="utf-8")
+
+
+def ensure_gitignore_entry(target: Path, entry: str) -> None:
+    path = target / ".gitignore"
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = [line.strip() for line in existing.splitlines()]
+    if entry.rstrip("/") in lines or entry in lines:
+        return
+    prefix = "" if not existing.strip() else "\n"
+    path.write_text(existing.rstrip() + prefix + entry + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

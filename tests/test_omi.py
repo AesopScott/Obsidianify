@@ -23,7 +23,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.0", result.stdout)
+        self.assertIn("Obsidianify 0.4.1", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
