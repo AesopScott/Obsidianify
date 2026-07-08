@@ -6,17 +6,22 @@ import argparse
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 OMI = ROOT / "scripts" / "omi.py"
+OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
+OBSIDIANIFY_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+SIDECAR_FILENAME = "sidecar_memory.json"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", required=True, type=Path)
-    parser.add_argument("--vault", action="append", required=True, type=Path)
+    parser.add_argument("--vault", action="append", type=Path)
+    parser.add_argument("--write-root", type=Path)
     parser.add_argument("--project", required=True)
     parser.add_argument("--agent", action="append", choices=("codex", "claude"), required=True)
     parser.add_argument("--task", default="general project session")
@@ -25,16 +30,20 @@ def main() -> int:
     target = args.target.resolve()
     if not target.exists():
         raise SystemExit(f"Target project not found: {target}")
-    vaults = [vault.resolve() for vault in args.vault]
+    vaults = resolve_install_vaults(args.vault, target)
+    write_root = resolve_install_write_root(args.write_root, target, args.project)
     for agent in args.agent:
-        install_agent(target, vaults, args.project, args.task, agent)
+        install_agent(target, vaults, args.project, args.task, agent, write_root)
     return 0
 
 
-def install_agent(target: Path, vaults: list[Path], project: str, task: str, agent: str) -> None:
+def install_agent(target: Path, vaults: list[Path], project: str, task: str, agent: str, write_root: Path) -> None:
     target_memory = target / ".obsidian-memory"
     target_memory.mkdir(parents=True, exist_ok=True)
     ensure_gitignore_entry(target, ".obsidian-memory/")
+    write_root.mkdir(parents=True, exist_ok=True)
+    update_local_project_config(OBSIDIANIFY_HOME / "config.json", project, target, vaults[0], write_root)
+    write_project_sidecar(target, project, vaults[0], write_root)
     if agent == "codex":
         install_codex(target, vaults, project, task)
     else:
@@ -209,8 +218,7 @@ def command(target: Path, vaults: list[Path], project: str, task: str, agent: st
 def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
     return hook_command(
         f'"{sys.executable}" "{OMI}" record-prompt '
-        f'--vault "{vaults[0]}" '
-        f'--project "{project}" '
+        f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "{target}" '
         f'--agent "{agent}"'
     )
@@ -219,8 +227,7 @@ def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -
 def turn_command(target: Path, vaults: list[Path], project: str, agent: str) -> str:
     return hook_command(
         f'"{sys.executable}" "{OMI}" record-turn '
-        f'--vault "{vaults[0]}" '
-        f'--project "{project}" '
+        f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "{target}" '
         f'--agent "{agent}"'
     )
@@ -241,6 +248,124 @@ def hook_command(command_text: str) -> str:
     if os.name == "nt":
         return f"& {command_text}"
     return command_text
+
+
+def resolve_install_vaults(vaults: list[Path] | None, target: Path) -> list[Path]:
+    if vaults:
+        resolved = [vault.expanduser().resolve() for vault in vaults]
+    else:
+        resolved = [prompt_path("Default Obsidian vault path", target, must_exist=True)]
+    for vault in resolved:
+        if not vault.exists():
+            raise SystemExit(f"Vault not found: {vault}")
+    return resolved
+
+
+def resolve_install_write_root(write_root: Path | None, target: Path, project: str) -> Path:
+    if write_root:
+        return write_root.expanduser().resolve()
+    return prompt_path("Default Obsidianify write route", target / safe_segment(project), must_exist=False)
+
+
+def prompt_path(label: str, default: Path, must_exist: bool) -> Path:
+    if not sys.stdin.isatty():
+        return default.expanduser().resolve()
+    while True:
+        raw = input(f"{label} [{default}]: ").strip()
+        path = Path(raw).expanduser() if raw else default
+        resolved = path.resolve()
+        if must_exist and not resolved.exists():
+            print(f"Path not found: {resolved}")
+            continue
+        return resolved
+
+
+def update_local_project_config(config_path: Path, project: str, target: Path, vault: Path, write_root: Path) -> None:
+    config = read_json_object(config_path)
+    projects = config.setdefault("projects", {})
+    if not isinstance(projects, dict):
+        projects = {}
+        config["projects"] = projects
+    project_config = projects.setdefault(project, {})
+    if not isinstance(project_config, dict):
+        project_config = {}
+        projects[project] = project_config
+    project_config.update(
+        {
+            "path": str(target),
+            "vaultPath": str(vault),
+            "writeRoot": str(write_root),
+        }
+    )
+    config.setdefault("store", str(OBSIDIANIFY_HOME / "store"))
+    config.setdefault("hookAuditLog", str(OBSIDIANIFY_HOME / "hook-audit.log"))
+    config["repo"] = str(ROOT)
+    config["version"] = OBSIDIANIFY_VERSION
+    write_json(config_path, config)
+
+
+def write_project_sidecar(target: Path, project: str, vault: Path, write_root: Path) -> Path:
+    sidecar_path = target / ".obsidian-memory" / SIDECAR_FILENAME
+    sidecar = read_json_object(sidecar_path)
+    entries = sidecar.get("entries", [])
+    if not isinstance(entries, list):
+        entries = []
+    managed_ids = {
+        "obsidianify.local.vaultPath",
+        "obsidianify.local.writeRoot",
+        "obsidianify.local.memoryPolicy",
+    }
+    filtered = [
+        entry
+        for entry in entries
+        if not (isinstance(entry, dict) and entry.get("id") in managed_ids)
+    ]
+    today = date.today().isoformat()
+    project_label = project.title()
+    filtered.extend(
+        [
+            {
+                "id": "obsidianify.local.vaultPath",
+                "text": f"{project_label} Obsidianify local config: this user's project vaultPath is {vault}. This is the local Obsidian vault root for the project.",
+                "addedAt": today,
+                "addedBy": "Obsidianify installer",
+            },
+            {
+                "id": "obsidianify.local.writeRoot",
+                "text": f"{project_label} Obsidianify local config: this user's project writeRoot is {write_root}. Turn-memory notes should write under this folder for this local user.",
+                "addedAt": today,
+                "addedBy": "Obsidianify installer",
+            },
+            {
+                "id": "obsidianify.local.memoryPolicy",
+                "text": f"{project_label} Obsidianify local config: .obsidian-memory is local generated/user memory and is gitignored. User-specific absolute paths belong here or in ~/.obsidianify/config.json, not in synced repo files.",
+                "addedAt": today,
+                "addedBy": "Obsidianify installer",
+            },
+        ]
+    )
+    write_json(sidecar_path, {"entries": filtered})
+    return sidecar_path
+
+
+def read_json_object(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
+
+
+def safe_segment(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_", " ") else "-" for ch in value).strip()
+    return cleaned or "project"
 
 
 def append_block(path: Path, label: str, content: str) -> None:

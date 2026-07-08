@@ -34,6 +34,42 @@ class OmiTests(unittest.TestCase):
         with mock.patch.object(install_global.os, "name", "posix"):
             self.assertEqual(install_global.hook_command(command), command)
 
+    def test_installer_writes_local_project_config_and_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            target = base / "intranet"
+            vault = target
+            write_root = target / "Scott"
+            config_path = base / ".obsidianify" / "config.json"
+            target.mkdir()
+
+            install.update_local_project_config(config_path, "intranet", target, vault, write_root)
+            sidecar_path = install.write_project_sidecar(target, "intranet", vault, write_root)
+
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            project = config["projects"]["intranet"]
+            self.assertEqual(project["path"], str(target))
+            self.assertEqual(project["vaultPath"], str(vault))
+            self.assertEqual(project["writeRoot"], str(write_root))
+
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            texts = "\n".join(entry["text"] for entry in sidecar["entries"])
+            self.assertIn(str(vault), texts)
+            self.assertIn(str(write_root), texts)
+            self.assertIn(".obsidian-memory is local", texts)
+
+    def test_project_turn_hooks_use_local_config_for_write_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "intranet"
+            vault = target
+            target.mkdir()
+
+            command = install.turn_command(target, [vault], "intranet", "codex")
+
+            self.assertIn("--config", command)
+            self.assertIn(str(install.OBSIDIANIFY_HOME / "config.json"), command)
+            self.assertNotIn("--vault", command)
+
     def test_cli_reports_version(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "omi.py"), "--version"],
@@ -42,7 +78,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.2", result.stdout)
+        self.assertIn("Obsidianify 0.4.3", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

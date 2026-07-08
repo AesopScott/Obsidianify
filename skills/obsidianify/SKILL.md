@@ -5,7 +5,7 @@ description: Use when setting up, refreshing, debugging, or explaining Obsidiani
 
 # Obsidianify
 
-Current version: 0.4.2
+Current version: 0.4.3
 
 Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent turn outcomes back into an Obsidian vault.
 
@@ -13,7 +13,7 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 
 1. Prefer global install unless the user needs a project-local override.
 2. Run `python scripts/install_global.py --vault <vault> --agent codex --agent claude` from the plugin repo for global install.
-3. For project-local install, run `python scripts/install.py --target <project> --vault <vault> --project <name> --agent codex --agent claude`.
+3. For project-local install, run `python scripts/install.py --target <project> --project <name> --agent codex --agent claude`. If `--vault` or `--write-root` is omitted, the installer prompts for local paths, stores them in `~/.obsidianify/config.json`, and writes agent-visible reminders to `<project>/.obsidian-memory/sidecar_memory.json`.
 4. Start a new agent session in the target project.
 5. Ask what Obsidian graph memory was injected.
 6. If memory is missing, inspect `<target>/.obsidian-memory/STATUS.json`.
