@@ -78,7 +78,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.3", result.stdout)
+        self.assertIn("Obsidianify 0.4.4", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -346,6 +346,88 @@ Body.
             )
 
             self.assertFalse((vault / "Alpha Project" / "session2026-06-19").exists())
+
+    def test_git_only_prompt_and_outcome_skip_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            store = base / "store"
+            audit = base / "hook-audit.log"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"Alpha Project": {"path": str(target)}},
+                        "store": str(store),
+                        "hookAuditLog": str(audit),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "record-prompt",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                ],
+                input=json.dumps({"prompt": "commit all of the branch to origin main"}),
+                check=True,
+                text=True,
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-git",
+                    "last_agent_message": "Committed and pushed main to origin. Everything up-to-date.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            self.assertFalse((vault / "Alpha Project" / "session2026-06-19").exists())
+            self.assertIn("git operation noise", audit.read_text(encoding="utf-8"))
+
+    def test_git_mentions_do_not_hide_durable_implementation_outcome(self) -> None:
+        classification = omi.classify_turn_memory(
+            "commit and push when done",
+            "Implemented prompt classifier guard for git-only operations, committed, and pushed origin main.",
+        )
+
+        self.assertTrue(classification["valuable"])
+        self.assertEqual(classification["reason"], "durable implementation outcome")
 
     def test_replay_session_routes_completed_turn_outcomes_and_skips_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

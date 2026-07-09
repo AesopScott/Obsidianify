@@ -5,7 +5,7 @@ description: Use when setting up, refreshing, debugging, or explaining Obsidiani
 
 # Obsidianify
 
-Current version: 0.4.3
+Current version: 0.4.4
 
 Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent turn outcomes back into an Obsidian vault.
 
@@ -24,6 +24,7 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 - `UserPromptSubmit` hooks record lightweight turn markers.
 - `Stop` hooks classify the latest prompt plus completed turn outcome and write valuable entries into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
 - Turn notes include distilled prompt memory and assistant outcome summaries; raw full prompts stay in the local marker store unless the user explicitly asks for transcript capture.
+- Pure Git bookkeeping prompts/outcomes, such as commit, push, status, branch, and origin/main updates, are skipped as noise unless the turn also contains durable implementation, architecture, configuration, or design details.
 - A project config can set `vaultPath` to choose the recording vault for that project: `projects.<name>.vaultPath`.
 - A project config can set `writeRoot` to write turn notes under a project-specific root instead: `projects.<name>.writeRoot/sessionYYYY-MM-DD/`.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.

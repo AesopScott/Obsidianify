@@ -57,6 +57,43 @@ DELEGATION_MARKERS = {
     "<codex_delegation>",
     "</codex_delegation>",
 }
+GIT_OPERATION_TERMS = {
+    "branch",
+    "checkout",
+    "commit",
+    "committed",
+    "diff",
+    "fetch",
+    "git",
+    "head",
+    "main",
+    "merge",
+    "origin",
+    "pull",
+    "push",
+    "pushed",
+    "rebase",
+    "remote",
+    "stage",
+    "staged",
+    "status",
+    "tag",
+    "tracked",
+    "untracked",
+    "up-to-date",
+}
+GIT_OPERATION_PHRASES = {
+    "everything up-to-date",
+    "origin/main",
+    "origin main",
+    "git push",
+    "git commit",
+    "git status",
+    "git add",
+    "working tree clean",
+    "working directory clean",
+    "clean and aligned",
+}
 VALUABLE_TERMS = {
     "add",
     "agent",
@@ -877,6 +914,9 @@ def classify_turn_memory(prompt_text: str, outcome_text: str) -> dict[str, Any]:
         return {"valuable": False, "information_type": "Other", "reason": "empty"}
     if prompt_lowered in LOW_VALUE_PROMPTS and (not outcome_lowered or outcome_lowered in LOW_VALUE_PROMPTS):
         return {"valuable": False, "information_type": "Other", "reason": "low-value acknowledgement"}
+    if is_git_operation_noise(prompt_lowered, prompt_tokens) or is_git_operation_noise(outcome_lowered, outcome_tokens):
+        if not has_non_git_durable_signal(lowered, token_set):
+            return {"valuable": False, "information_type": "Other", "reason": "git operation noise"}
     if is_noise_payload(outcome_lowered, outcome_tokens) or (
         is_noise_payload(prompt_lowered, prompt_tokens) and not has_explicit_memory_intent(prompt_lowered)
     ):
@@ -937,6 +977,37 @@ def is_noise_payload(lowered: str, token_set: set[str]) -> bool:
         return True
     unchanged_lines = sum(1 for line in lowered.splitlines() if "handoff-check" in line and "unchanged" in line)
     return unchanged_lines >= 3
+
+
+def is_git_operation_noise(lowered: str, token_set: set[str]) -> bool:
+    if not lowered:
+        return False
+    if token_set & GIT_OPERATION_TERMS:
+        return True
+    return any(phrase in lowered for phrase in GIT_OPERATION_PHRASES)
+
+
+def has_non_git_durable_signal(lowered: str, token_set: set[str]) -> bool:
+    durable_terms = (
+        ARCHITECTURE_TERMS
+        | CONFIGURATION_TERMS
+        | DESIGN_TERMS
+        | PREFERENCE_TERMS
+        | {"implemented", "built", "created", "fixed", "added", "routed", "validated"}
+    )
+    weak_git_context_terms = {"repo", "project", "change", "changed", "update", "updated", "passed", "verified"}
+    durable_terms -= weak_git_context_terms
+    if token_set & durable_terms:
+        return True
+    durable_phrases = {
+        "write root",
+        "vault path",
+        "prompt classifier",
+        "memory classifier",
+        "session context",
+        "turn memory",
+    }
+    return any(phrase in lowered for phrase in durable_phrases)
 
 
 def resolve_recording_context(
