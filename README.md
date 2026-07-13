@@ -1,6 +1,8 @@
 # Obsidianify
 
-Current version: 0.4.5
+Current version: 0.4.6
+
+Authoritative update source: https://github.com/aesopscott/obsidianify
 
 Obsidianify is Graphify-style graph intelligence for Obsidian, with agent memory injection.
 

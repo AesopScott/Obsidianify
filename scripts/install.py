@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OMI = ROOT / "scripts" / "omi.py"
 OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
 OBSIDIANIFY_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+OBSIDIANIFY_UPDATE_SOURCE = "https://github.com/aesopscott/obsidianify"
 SIDECAR_FILENAME = "sidecar_memory.json"
 
 
@@ -301,6 +302,7 @@ def update_local_project_config(config_path: Path, project: str, target: Path, v
     config.setdefault("hookAuditLog", str(OBSIDIANIFY_HOME / "hook-audit.log"))
     config["repo"] = str(ROOT)
     config["version"] = OBSIDIANIFY_VERSION
+    config["updateSource"] = OBSIDIANIFY_UPDATE_SOURCE
     write_json(config_path, config)
 
 
@@ -314,6 +316,7 @@ def write_project_sidecar(target: Path, project: str, vault: Path, write_root: P
         "obsidianify.local.vaultPath",
         "obsidianify.local.writeRoot",
         "obsidianify.local.memoryPolicy",
+        "obsidianify.updateSource",
     }
     filtered = [
         entry
@@ -343,6 +346,12 @@ def write_project_sidecar(target: Path, project: str, vault: Path, write_root: P
             {
                 "id": "obsidianify.local.memoryPolicy",
                 "text": f"{project_label} Obsidianify local config: .obsidian-memory is local generated/user memory and is gitignored. User-specific absolute paths belong here or in ~/.obsidianify/config.json, not in synced repo files.",
+                "addedAt": today,
+                "addedBy": "Obsidianify installer",
+            },
+            {
+                "id": "obsidianify.updateSource",
+                "text": f"Obsidianify authoritative update source is {OBSIDIANIFY_UPDATE_SOURCE}. Use this GitHub repository for updates.",
                 "addedAt": today,
                 "addedBy": "Obsidianify installer",
             },

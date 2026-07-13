@@ -51,12 +51,14 @@ class OmiTests(unittest.TestCase):
             self.assertEqual(project["path"], str(target))
             self.assertEqual(project["vaultPath"], str(vault))
             self.assertEqual(project["writeRoot"], str(write_root))
+            self.assertEqual(config["updateSource"], "https://github.com/aesopscott/obsidianify")
 
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             texts = "\n".join(entry["text"] for entry in sidecar["entries"])
             self.assertIn(str(vault), texts)
             self.assertIn(str(write_root), texts)
             self.assertIn(".obsidian-memory is local", texts)
+            self.assertIn("https://github.com/aesopscott/obsidianify", texts)
 
     def test_project_turn_hooks_use_local_config_for_write_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,7 +166,8 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.5", result.stdout)
+        self.assertIn("Obsidianify 0.4.6", result.stdout)
+        self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OMI = ROOT / "scripts" / "omi.py"
 OBSIDIANIFY_HOME = Path.home() / ".obsidianify"
 OBSIDIANIFY_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+OBSIDIANIFY_UPDATE_SOURCE = "https://github.com/aesopscott/obsidianify"
 
 
 def main() -> int:
@@ -42,6 +43,7 @@ def main() -> int:
             "hookAuditLog": str(OBSIDIANIFY_HOME / "hook-audit.log"),
             "repo": str(ROOT),
             "version": OBSIDIANIFY_VERSION,
+            "updateSource": OBSIDIANIFY_UPDATE_SOURCE,
         }
     )
     write_json(OBSIDIANIFY_HOME / "config.json", config)
@@ -55,6 +57,7 @@ def main() -> int:
             install_cowork_global()
 
     print(f"Installed Obsidianify {OBSIDIANIFY_VERSION} globally for: {', '.join(args.agent)}")
+    print(f"Update source: {OBSIDIANIFY_UPDATE_SOURCE}")
     print(f"Config: {OBSIDIANIFY_HOME / 'config.json'}")
     return 0
 
@@ -87,6 +90,8 @@ def install_codex_global() -> None:
 ## Obsidianify
 
 Version: {OBSIDIANIFY_VERSION}
+
+Authoritative update source: {OBSIDIANIFY_UPDATE_SOURCE}
 
 When asked what Obsidian graph memory is loaded or injected, first read:
 
@@ -124,6 +129,8 @@ def install_claude_global() -> None:
 
 Version: {OBSIDIANIFY_VERSION}
 
+Authoritative update source: {OBSIDIANIFY_UPDATE_SOURCE}
+
 When asked what Obsidian graph memory is loaded or injected, first read:
 
 `.obsidian-memory/STATUS.json`
@@ -150,6 +157,8 @@ def install_cowork_global() -> None:
 # Obsidianify Cowork Workaround
 
 Version: {OBSIDIANIFY_VERSION}
+
+Authoritative update source: {OBSIDIANIFY_UPDATE_SOURCE}
 
 Cowork does not appear to run Claude Code's global `~/.claude/settings.json` hooks.
 
