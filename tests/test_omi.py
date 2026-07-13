@@ -166,7 +166,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.8", result.stdout)
+        self.assertIn("Obsidianify 0.4.9", result.stdout)
         self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
@@ -522,6 +522,10 @@ Body.
             (
                 "commit config changes",
                 "Ran git add config.json, git commit created 123abc, and git push origin/main.",
+            ),
+            (
+                "commit after implementation",
+                "Implemented classifier guard, then ran git add scripts/omi.py, git commit, and git push origin main.",
             ),
         ]
         for prompt, outcome in cases:

@@ -1084,21 +1084,7 @@ def is_git_command_only_noise(prompt_lowered: str, outcome_lowered: str) -> bool
     combined = f"{prompt_lowered} {outcome_lowered}".strip()
     if not combined:
         return False
-    if not any(command in combined for command in ("git add", "git commit", "git push")):
-        return False
-    durable_markers = {
-        "architecture",
-        "built",
-        "classifier",
-        "design",
-        "fixed",
-        "implemented",
-        "routed",
-        "validated",
-    }
-    if set(re.findall(r"[a-z0-9_+-]+", combined)) & durable_markers:
-        return False
-    return not any(phrase in combined for phrase in ("write root", "vault path", "prompt classifier", "memory classifier"))
+    return any(command in combined for command in ("git add", "git commit", "git push"))
 
 
 def is_release_maintenance_noise(
