@@ -326,12 +326,16 @@ def write_project_sidecar(target: Path, project: str, vault: Path, write_root: P
         [
             {
                 "id": "obsidianify.local.vaultPath",
+                "key": "vaultPath",
+                "path": str(vault),
                 "text": f"{project_label} Obsidianify local config: this user's project vaultPath is {vault}. This is the local Obsidian vault root for the project.",
                 "addedAt": today,
                 "addedBy": "Obsidianify installer",
             },
             {
                 "id": "obsidianify.local.writeRoot",
+                "key": "writeRoot",
+                "path": str(write_root),
                 "text": f"{project_label} Obsidianify local config: this user's project writeRoot is {write_root}. Turn-memory notes should write under this folder for this local user.",
                 "addedAt": today,
                 "addedBy": "Obsidianify installer",

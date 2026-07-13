@@ -70,6 +70,92 @@ class OmiTests(unittest.TestCase):
             self.assertIn(str(install.OBSIDIANIFY_HOME / "config.json"), command)
             self.assertNotIn("--vault", command)
 
+    def test_record_turn_syncs_write_root_from_sidecar_into_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            vault = base / "Vault"
+            target = base / "TargetProject"
+            write_root = base / "Scott"
+            store = base / "store"
+            config = base / "config.json"
+            session_log = base / "session.jsonl"
+            vault.mkdir()
+            target.mkdir()
+            (target / ".obsidian-memory").mkdir()
+            config.write_text(
+                json.dumps(
+                    {
+                        "vaults": [{"name": "Vault", "path": str(vault), "enabled": True}],
+                        "projects": {"intranet": {"path": str(target)}},
+                        "store": str(store),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (target / ".obsidian-memory" / "sidecar_memory.json").write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "id": "obsidianify.local.writeRoot",
+                                "key": "writeRoot",
+                                "path": str(write_root),
+                                "text": f"Intranet Obsidianify local config: this user's project writeRoot is {write_root}.",
+                            },
+                            {
+                                "id": "obsidianify.local.vaultPath",
+                                "key": "vaultPath",
+                                "path": str(vault),
+                                "text": f"Intranet Obsidianify local config: this user's project vaultPath is {vault}.",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            event = {
+                "timestamp": "2026-06-19T10:01:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn-sidecar-root",
+                    "last_agent_message": "Implemented Obsidianify configuration routing for project write roots.",
+                },
+            }
+            session_log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "omi.py"),
+                    "replay-session",
+                    "--config",
+                    str(config),
+                    "--project",
+                    "intranet",
+                    "--target",
+                    str(target),
+                    "--agent",
+                    "codex",
+                    "--session-date",
+                    "2026-06-19",
+                    "--session-log",
+                    str(session_log),
+                ],
+                check=True,
+                text=True,
+            )
+
+            saved = json.loads(config.read_text(encoding="utf-8"))
+            self.assertEqual(saved["projects"]["intranet"]["writeRoot"], str(write_root))
+            self.assertEqual(saved["projects"]["intranet"]["vaultPath"], str(vault))
+            written_text = "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in (write_root / "session2026-06-19").glob("*.md")
+            )
+            self.assertIn("project write roots", written_text)
+            self.assertFalse((vault / "intranet").exists())
+
     def test_cli_reports_version(self) -> None:
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "omi.py"), "--version"],
@@ -78,7 +164,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.4", result.stdout)
+        self.assertIn("Obsidianify 0.4.5", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

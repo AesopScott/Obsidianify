@@ -369,6 +369,7 @@ def refresh_from_global_config(
     config = load_json(config_path)
     target = Path.cwd().resolve()
     project = detect_project_name(target, config)
+    config = sync_project_routing_from_sidecar(config_path, config, project, target)
     task = config.get("defaultTask", "general project session")
     vaults = config_vaults(config)
     store = Path(config.get("store", str(Path.home() / ".obsidianify" / "store")))
@@ -607,6 +608,58 @@ def load_sidecar_entries(path: Path) -> list[dict[str, Any]]:
     if not isinstance(entries, list):
         return []
     return [entry for entry in entries if isinstance(entry, dict) and str(entry.get("text", "")).strip()]
+
+
+def sidecar_project_routing(target: Path) -> dict[str, str]:
+    routing: dict[str, str] = {}
+    for entry in load_sidecar_entries(sidecar_memory_path(target)):
+        key = str(entry.get("key", ""))
+        path = str(entry.get("path", "")).strip()
+        if key in {"vaultPath", "writeRoot"} and path:
+            routing[key] = path
+            continue
+        entry_id = str(entry.get("id", ""))
+        text = str(entry.get("text", ""))
+        if entry_id.endswith(".vaultPath"):
+            parsed = parse_sidecar_path_text(text, "vaultPath")
+            if parsed:
+                routing["vaultPath"] = parsed
+        elif entry_id.endswith(".writeRoot"):
+            parsed = parse_sidecar_path_text(text, "writeRoot")
+            if parsed:
+                routing["writeRoot"] = parsed
+    return routing
+
+
+def parse_sidecar_path_text(text: str, key: str) -> str:
+    match = re.search(rf"\b{re.escape(key)}\s+is\s+(.+?)(?:\.\s|$)", text)
+    return match.group(1).strip() if match else ""
+
+
+def sync_project_routing_from_sidecar(config_path: Path | None, config: dict[str, Any], project_name: str, target: Path) -> dict[str, Any]:
+    routing = sidecar_project_routing(target)
+    if not routing:
+        return config
+    projects = config.setdefault("projects", {})
+    if not isinstance(projects, dict):
+        projects = {}
+        config["projects"] = projects
+    project = projects.setdefault(project_name, {})
+    if not isinstance(project, dict):
+        project = {}
+        projects[project_name] = project
+    changed = False
+    if project.get("path") != str(target):
+        project["path"] = str(target)
+        changed = True
+    for key in ("vaultPath", "writeRoot"):
+        value = routing.get(key)
+        if value and project.get(key) != value:
+            project[key] = value
+            changed = True
+    if changed and config_path:
+        write_json(config_path, config)
+    return config
 
 
 def sidecar_memory_lines(path: Path) -> list[str]:
@@ -1026,6 +1079,8 @@ def resolve_recording_context(
         project_name = detect_project_name(resolved_target, config)
     else:
         project_name = resolved_target.name
+    if config_path:
+        config = sync_project_routing_from_sidecar(config_path, config, project_name, resolved_target)
     return config, project_name, resolved_target, resolve_session_log_vault(config, vault, project_name, resolved_target)
 
 

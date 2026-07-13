@@ -1,6 +1,6 @@
 # Obsidianify
 
-Current version: 0.4.4
+Current version: 0.4.5
 
 Obsidianify is Graphify-style graph intelligence for Obsidian, with agent memory injection.
 
@@ -378,6 +378,8 @@ python scripts\omi.py refresh-global `
 ```
 
 Project-local installs prompt for local routing when `--vault` or `--write-root` is omitted. The selected values are written to `~/.obsidianify/config.json` for hook routing and to `<target>/.obsidian-memory/sidecar_memory.json` so the session packet can remind agents which local vault path and write route belong to that user. The `.obsidian-memory/` directory should stay gitignored because these paths are user-specific.
+
+When a project sidecar contains installer-managed `vaultPath` or `writeRoot` entries, `refresh-global` and turn recording sync those paths back into `~/.obsidianify/config.json`. This keeps hook routing authoritative even when the agent sees the right sidecar path but would otherwise fall back to the repo root.
 
 ## Before / After Demo Prompt
 

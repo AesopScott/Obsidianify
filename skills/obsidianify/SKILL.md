@@ -5,7 +5,7 @@ description: Use when setting up, refreshing, debugging, or explaining Obsidiani
 
 # Obsidianify
 
-Current version: 0.4.4
+Current version: 0.4.5
 
 Use this skill when a user wants to inject Obsidian-derived memory into a Codex or Claude project session, or record agent turn outcomes back into an Obsidian vault.
 
@@ -27,6 +27,7 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 - Pure Git bookkeeping prompts/outcomes, such as commit, push, status, branch, and origin/main updates, are skipped as noise unless the turn also contains durable implementation, architecture, configuration, or design details.
 - A project config can set `vaultPath` to choose the recording vault for that project: `projects.<name>.vaultPath`.
 - A project config can set `writeRoot` to write turn notes under a project-specific root instead: `projects.<name>.writeRoot/sessionYYYY-MM-DD/`.
+- Installer-managed sidecar entries for `vaultPath` and `writeRoot` are synced back into `~/.obsidianify/config.json` during `refresh-global` and turn recording.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.
 - The first user prompt can force verification.
 
