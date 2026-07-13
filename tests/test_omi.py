@@ -166,7 +166,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.6", result.stdout)
+        self.assertIn("Obsidianify 0.4.7", result.stdout)
         self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
@@ -517,6 +517,24 @@ Body.
 
         self.assertTrue(classification["valuable"])
         self.assertEqual(classification["reason"], "durable implementation outcome")
+
+    def test_obsidianify_environment_update_and_push_skips_note(self) -> None:
+        classification = omi.classify_turn_memory(
+            "Now update Obsidian Fi in my desktop and CLI environments, and then push the updated changes to origin main",
+            "Installed Obsidianify 0.4.4 globally for: codex. Installed Obsidianify 0.4.4 globally for: claude. Hooks verified and git push returned Everything up-to-date.",
+        )
+
+        self.assertFalse(classification["valuable"])
+        self.assertEqual(classification["reason"], "release/update bookkeeping noise")
+
+    def test_obsidianify_release_bookkeeping_with_hooks_skips_note(self) -> None:
+        classification = omi.classify_turn_memory(
+            "update my environments",
+            "Codex and Claude hooks refreshed to Obsidianify 0.4.6. origin/main already current.",
+        )
+
+        self.assertFalse(classification["valuable"])
+        self.assertEqual(classification["reason"], "release/update bookkeeping noise")
 
     def test_replay_session_routes_completed_turn_outcomes_and_skips_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

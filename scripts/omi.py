@@ -95,6 +95,35 @@ GIT_OPERATION_PHRASES = {
     "working directory clean",
     "clean and aligned",
 }
+RELEASE_MAINTENANCE_TERMS = {
+    "cli",
+    "claude",
+    "codex",
+    "desktop",
+    "environment",
+    "environments",
+    "hook",
+    "hooks",
+    "install",
+    "installed",
+    "reinstall",
+    "reinstalled",
+    "update",
+    "updated",
+    "version",
+}
+CODE_CHANGE_TERMS = {
+    "added",
+    "architecture",
+    "built",
+    "classifier",
+    "created",
+    "design",
+    "fixed",
+    "implemented",
+    "routed",
+    "validated",
+}
 VALUABLE_TERMS = {
     "add",
     "agent",
@@ -974,6 +1003,9 @@ def classify_turn_memory(prompt_text: str, outcome_text: str) -> dict[str, Any]:
         return {"valuable": False, "information_type": "Other", "reason": "empty"}
     if prompt_lowered in LOW_VALUE_PROMPTS and (not outcome_lowered or outcome_lowered in LOW_VALUE_PROMPTS):
         return {"valuable": False, "information_type": "Other", "reason": "low-value acknowledgement"}
+    explicit_memory = has_explicit_memory_intent(prompt_lowered)
+    if not explicit_memory and is_release_maintenance_noise(prompt_lowered, prompt_tokens, outcome_lowered, outcome_tokens):
+        return {"valuable": False, "information_type": "Other", "reason": "release/update bookkeeping noise"}
     if is_git_operation_noise(prompt_lowered, prompt_tokens) or is_git_operation_noise(outcome_lowered, outcome_tokens):
         if not has_non_git_durable_signal(lowered, token_set):
             return {"valuable": False, "information_type": "Other", "reason": "git operation noise"}
@@ -984,7 +1016,6 @@ def classify_turn_memory(prompt_text: str, outcome_text: str) -> dict[str, Any]:
     scores = information_scores(lowered, token_set)
     if prompt_tokens & PREFERENCE_TERMS and any(term in lowered for term in ("default", "prefer", "always", "should")):
         scores["Configuration"] += 1
-    explicit_memory = has_explicit_memory_intent(prompt_lowered)
     signal_terms = token_set & (VALUABLE_TERMS | OUTCOME_TERMS | ARCHITECTURE_TERMS | CONFIGURATION_TERMS | DESIGN_TERMS)
     valuable = explicit_memory or bool(signal_terms) or max(scores.values(), default=0) >= 2
     if not valuable:
@@ -1045,6 +1076,26 @@ def is_git_operation_noise(lowered: str, token_set: set[str]) -> bool:
     if token_set & GIT_OPERATION_TERMS:
         return True
     return any(phrase in lowered for phrase in GIT_OPERATION_PHRASES)
+
+
+def is_release_maintenance_noise(
+    prompt_lowered: str,
+    prompt_tokens: set[str],
+    outcome_lowered: str,
+    outcome_tokens: set[str],
+) -> bool:
+    combined = f"{prompt_lowered} {outcome_lowered}".strip()
+    combined_tokens = prompt_tokens | outcome_tokens
+    if not combined:
+        return False
+    mentions_obsidianify = "obsidianify" in combined_tokens or "obsidian fi" in combined
+    asks_update_env = bool(prompt_tokens & {"update", "install", "reinstall"}) and bool(
+        prompt_tokens & {"desktop", "desktops", "cli", "clis", "environment", "environments"}
+    )
+    has_git = is_git_operation_noise(combined, combined_tokens)
+    maintenance_only = bool(combined_tokens & RELEASE_MAINTENANCE_TERMS)
+    has_code_change = bool(combined_tokens & CODE_CHANGE_TERMS)
+    return mentions_obsidianify and (has_git or asks_update_env) and maintenance_only and not has_code_change
 
 
 def has_non_git_durable_signal(lowered: str, token_set: set[str]) -> bool:
