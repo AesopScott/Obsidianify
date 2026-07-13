@@ -166,7 +166,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.7", result.stdout)
+        self.assertIn("Obsidianify 0.4.8", result.stdout)
         self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
@@ -509,6 +509,27 @@ Body.
             self.assertFalse((vault / "Alpha Project" / "session2026-06-19").exists())
             self.assertIn("git operation noise", audit.read_text(encoding="utf-8"))
 
+    def test_git_add_and_commit_command_summaries_skip_note(self) -> None:
+        cases = [
+            (
+                "Run git add and git commit",
+                "git add . completed. git commit created abc123. git push origin main completed.",
+            ),
+            (
+                "stage and commit the repo",
+                "Ran git add README.md VERSION scripts/omi.py, git commit -m \"fix\", and git push origin main.",
+            ),
+            (
+                "commit config changes",
+                "Ran git add config.json, git commit created 123abc, and git push origin/main.",
+            ),
+        ]
+        for prompt, outcome in cases:
+            with self.subTest(prompt=prompt):
+                classification = omi.classify_turn_memory(prompt, outcome)
+                self.assertFalse(classification["valuable"])
+                self.assertEqual(classification["reason"], "git command noise")
+
     def test_git_mentions_do_not_hide_durable_implementation_outcome(self) -> None:
         classification = omi.classify_turn_memory(
             "commit and push when done",
@@ -525,7 +546,7 @@ Body.
         )
 
         self.assertFalse(classification["valuable"])
-        self.assertEqual(classification["reason"], "release/update bookkeeping noise")
+        self.assertEqual(classification["reason"], "git command noise")
 
     def test_obsidianify_release_bookkeeping_with_hooks_skips_note(self) -> None:
         classification = omi.classify_turn_memory(

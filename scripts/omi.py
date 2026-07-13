@@ -1004,6 +1004,8 @@ def classify_turn_memory(prompt_text: str, outcome_text: str) -> dict[str, Any]:
     if prompt_lowered in LOW_VALUE_PROMPTS and (not outcome_lowered or outcome_lowered in LOW_VALUE_PROMPTS):
         return {"valuable": False, "information_type": "Other", "reason": "low-value acknowledgement"}
     explicit_memory = has_explicit_memory_intent(prompt_lowered)
+    if not explicit_memory and is_git_command_only_noise(prompt_lowered, outcome_lowered):
+        return {"valuable": False, "information_type": "Other", "reason": "git command noise"}
     if not explicit_memory and is_release_maintenance_noise(prompt_lowered, prompt_tokens, outcome_lowered, outcome_tokens):
         return {"valuable": False, "information_type": "Other", "reason": "release/update bookkeeping noise"}
     if is_git_operation_noise(prompt_lowered, prompt_tokens) or is_git_operation_noise(outcome_lowered, outcome_tokens):
@@ -1076,6 +1078,27 @@ def is_git_operation_noise(lowered: str, token_set: set[str]) -> bool:
     if token_set & GIT_OPERATION_TERMS:
         return True
     return any(phrase in lowered for phrase in GIT_OPERATION_PHRASES)
+
+
+def is_git_command_only_noise(prompt_lowered: str, outcome_lowered: str) -> bool:
+    combined = f"{prompt_lowered} {outcome_lowered}".strip()
+    if not combined:
+        return False
+    if not any(command in combined for command in ("git add", "git commit", "git push")):
+        return False
+    durable_markers = {
+        "architecture",
+        "built",
+        "classifier",
+        "design",
+        "fixed",
+        "implemented",
+        "routed",
+        "validated",
+    }
+    if set(re.findall(r"[a-z0-9_+-]+", combined)) & durable_markers:
+        return False
+    return not any(phrase in combined for phrase in ("write root", "vault path", "prompt classifier", "memory classifier"))
 
 
 def is_release_maintenance_noise(

@@ -5,7 +5,7 @@ description: Use when setting up, refreshing, debugging, or explaining Obsidiani
 
 # Obsidianify
 
-Current version: 0.4.7
+Current version: 0.4.8
 
 Authoritative update source: https://github.com/aesopscott/obsidianify
 
@@ -27,6 +27,7 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 - `Stop` hooks classify the latest prompt plus completed turn outcome and write valuable entries into typed notes under `<vault>/<project>/sessionYYYY-MM-DD/`.
 - Turn notes include distilled prompt memory and assistant outcome summaries; raw full prompts stay in the local marker store unless the user explicitly asks for transcript capture.
 - Pure Git bookkeeping prompts/outcomes, such as commit, push, status, branch, and origin/main updates, are skipped as noise unless the turn also contains durable implementation, architecture, configuration, or design details.
+- Direct Git command summaries, such as `git add`, `git commit`, and `git push`, are skipped even when they mention files like `config.json`.
 - Obsidianify release/update bookkeeping, such as refreshing desktop/CLI environments, hook version updates, and origin/main status, is skipped as noise unless it includes real code-change details.
 - A project config can set `vaultPath` to choose the recording vault for that project: `projects.<name>.vaultPath`.
 - A project config can set `writeRoot` to write turn notes under a project-specific root instead: `projects.<name>.writeRoot/sessionYYYY-MM-DD/`.
