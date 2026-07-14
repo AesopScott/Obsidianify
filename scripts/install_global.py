@@ -237,7 +237,8 @@ def global_command(agent: str) -> str:
         f'"{sys.executable}" "{OMI}" refresh-global '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--agent "{agent}" '
-        f'--emit-hook-context'
+        f'--emit-hook-context',
+        agent,
     )
 
 
@@ -246,7 +247,8 @@ def global_prompt_command(agent: str) -> str:
         f'"{sys.executable}" "{OMI}" record-prompt '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "." '
-        f'--agent "{agent}"'
+        f'--agent "{agent}"',
+        agent,
     )
 
 
@@ -255,14 +257,22 @@ def global_turn_command(agent: str) -> str:
         f'"{sys.executable}" "{OMI}" record-turn '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "." '
-        f'--agent "{agent}"'
+        f'--agent "{agent}"',
+        agent,
     )
 
 
-def hook_command(command: str) -> str:
+def hook_command(command: str, agent: str = "codex") -> str:
+    if os.name == "nt" and agent == "claude":
+        return powershell_exe_command(command)
     if os.name == "nt":
         return f"& {command}"
     return command
+
+
+def powershell_exe_command(command: str) -> str:
+    escaped = command.replace('"', '\\"')
+    return f'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "& {escaped}"'
 
 
 def read_json_object(path: Path) -> dict[str, Any]:

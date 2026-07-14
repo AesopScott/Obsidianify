@@ -25,6 +25,17 @@ class OmiTests(unittest.TestCase):
         with mock.patch.object(install_global.os, "name", "nt"):
             self.assertTrue(install_global.hook_command('"C:\\Python\\python.exe" script.py').startswith("& "))
 
+    def test_windows_claude_hooks_wrap_commands_for_bash(self) -> None:
+        with mock.patch.object(install.os, "name", "nt"):
+            command = install.hook_command('"C:\\Python\\python.exe" script.py', "claude")
+            self.assertTrue(command.startswith("powershell.exe "))
+            self.assertIn('-Command "& \\"C:\\Python\\python.exe\\" script.py"', command)
+
+        with mock.patch.object(install_global.os, "name", "nt"):
+            command = install_global.hook_command('"C:\\Python\\python.exe" script.py', "claude")
+            self.assertTrue(command.startswith("powershell.exe "))
+            self.assertIn('-Command "& \\"C:\\Python\\python.exe\\" script.py"', command)
+
     def test_non_windows_hook_commands_are_unchanged(self) -> None:
         command = '"/usr/bin/python3" script.py'
 
@@ -71,6 +82,18 @@ class OmiTests(unittest.TestCase):
             self.assertIn("--config", command)
             self.assertIn(str(install.OBSIDIANIFY_HOME / "config.json"), command)
             self.assertNotIn("--vault", command)
+
+    def test_project_claude_turn_hook_uses_bash_safe_windows_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "intranet"
+            vault = target
+            target.mkdir()
+
+            command = install.turn_command(target, [vault], "intranet", "claude")
+
+            self.assertTrue(command.startswith("powershell.exe "))
+            self.assertIn("record-turn", command)
+            self.assertNotIn("[& ", command)
 
     def test_record_turn_syncs_write_root_from_sidecar_into_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -166,7 +189,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.9", result.stdout)
+        self.assertIn("Obsidianify 0.4.10", result.stdout)
         self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:

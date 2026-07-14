@@ -212,7 +212,8 @@ def command(target: Path, vaults: list[Path], project: str, task: str, agent: st
         f'--task "{task}" '
         f'--target "{target}" '
         f'--agent "{agent}" '
-        f'--emit-hook-context'
+        f'--emit-hook-context',
+        agent,
     )
 
 
@@ -221,7 +222,8 @@ def prompt_command(target: Path, vaults: list[Path], project: str, agent: str) -
         f'"{sys.executable}" "{OMI}" record-prompt '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "{target}" '
-        f'--agent "{agent}"'
+        f'--agent "{agent}"',
+        agent,
     )
 
 
@@ -230,7 +232,8 @@ def turn_command(target: Path, vaults: list[Path], project: str, agent: str) -> 
         f'"{sys.executable}" "{OMI}" record-turn '
         f'--config "{OBSIDIANIFY_HOME / "config.json"}" '
         f'--target "{target}" '
-        f'--agent "{agent}"'
+        f'--agent "{agent}"',
+        agent,
     )
 
 
@@ -245,10 +248,17 @@ def vault_command_args(vaults: list[Path]) -> str:
     return " ".join(f'--vault "{vault}"' for vault in vaults)
 
 
-def hook_command(command_text: str) -> str:
+def hook_command(command_text: str, agent: str = "codex") -> str:
+    if os.name == "nt" and agent == "claude":
+        return powershell_exe_command(command_text)
     if os.name == "nt":
         return f"& {command_text}"
     return command_text
+
+
+def powershell_exe_command(command_text: str) -> str:
+    escaped = command_text.replace('"', '\\"')
+    return f'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "& {escaped}"'
 
 
 def resolve_install_vaults(vaults: list[Path] | None, target: Path) -> list[Path]:
