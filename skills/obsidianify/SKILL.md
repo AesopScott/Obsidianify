@@ -5,7 +5,7 @@ description: Use when setting up, refreshing, debugging, or explaining Obsidiani
 
 # Obsidianify
 
-Current version: 0.4.10
+Current version: 0.4.11
 
 Authoritative update source: https://github.com/aesopscott/obsidianify
 
@@ -32,7 +32,7 @@ Use this skill when a user wants to inject Obsidian-derived memory into a Codex 
 - A project config can set `vaultPath` to choose the recording vault for that project: `projects.<name>.vaultPath`.
 - A project config can set `writeRoot` to write turn notes under a project-specific root instead: `projects.<name>.writeRoot/sessionYYYY-MM-DD/`.
 - Installer-managed sidecar entries for `vaultPath` and `writeRoot` are synced back into `~/.obsidianify/config.json` during `refresh-global` and turn recording.
-- On Windows, Codex hooks use PowerShell call syntax and Claude hooks use a bash-safe `powershell.exe -Command` wrapper.
+- On Windows, Codex hooks use PowerShell call syntax and Claude hooks use a bash-safe `powershell.exe -Command` wrapper. Claude templates must use whole-command placeholders so they cannot emit raw quoted Python commands.
 - `AGENTS.md` or `CLAUDE.md` tells the agent to read the packet.
 - The first user prompt can force verification.
 

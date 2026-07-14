@@ -1,6 +1,6 @@
 # Obsidianify
 
-Current version: 0.4.10
+Current version: 0.4.11
 
 Authoritative update source: https://github.com/aesopscott/obsidianify
 

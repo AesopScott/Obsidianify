@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"PYTHON\" \"OMI_SCRIPT\" refresh-global --config \"OBSIDIANIFY_CONFIG\" --agent \"claude\" --emit-hook-context"
+            "command": "CLAUDE_REFRESH_COMMAND"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"PYTHON\" \"OMI_SCRIPT\" record-prompt --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"claude\""
+            "command": "CLAUDE_RECORD_PROMPT_COMMAND"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"PYTHON\" \"OMI_SCRIPT\" record-turn --config \"OBSIDIANIFY_CONFIG\" --target \".\" --agent \"claude\""
+            "command": "CLAUDE_RECORD_TURN_COMMAND"
           }
         ]
       }

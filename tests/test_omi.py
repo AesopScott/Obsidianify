@@ -31,6 +31,14 @@ class OmiTests(unittest.TestCase):
             self.assertTrue(command.startswith("powershell.exe "))
             self.assertIn('-Command "& \\"C:\\Python\\python.exe\\" script.py"', command)
 
+    def test_claude_template_does_not_embed_raw_python_command(self) -> None:
+        template = (ROOT / "adapters" / "claude" / "settings.template.json").read_text(encoding="utf-8")
+
+        self.assertNotIn('"PYTHON" "OMI_SCRIPT"', template)
+        self.assertIn("CLAUDE_REFRESH_COMMAND", template)
+        self.assertIn("CLAUDE_RECORD_PROMPT_COMMAND", template)
+        self.assertIn("CLAUDE_RECORD_TURN_COMMAND", template)
+
         with mock.patch.object(install_global.os, "name", "nt"):
             command = install_global.hook_command('"C:\\Python\\python.exe" script.py', "claude")
             self.assertTrue(command.startswith("powershell.exe "))
@@ -189,7 +197,7 @@ class OmiTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("Obsidianify 0.4.10", result.stdout)
+        self.assertIn("Obsidianify 0.4.11", result.stdout)
         self.assertIn("https://github.com/aesopscott/obsidianify", result.stdout)
 
     def test_refresh_can_emit_hook_context(self) -> None:
